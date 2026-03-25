@@ -87,14 +87,15 @@ class ResetRequest(BaseModel):
 
 
 class StepRequest(BaseModel):
-    action: EmailAction = Field(
-        default_factory=lambda: EmailAction(
-            category="support",
-            priority="medium",
-            department="support_team",
-            action="reply",
-        )
+    action: EmailAction | ActionType | None = Field(
+        default=None,
+        description="Either a nested action object or the flat action value.",
     )
+    category: Optional[Category] = None
+    priority: Optional[Priority] = None
+    department: Optional[Department] = None
+    use_tool: Optional[Literal["lookup_order", "check_payment", "get_user_history"]] = None
+    tool_input: Optional[dict[str, Any]] = None
 
 
 class GradeRequest(BaseModel):

@@ -75,6 +75,23 @@ Each episode now contains multiple emails. The agent processes one email at a ti
 
 ## Action Schema
 
+`POST /step` accepts either of these shapes:
+
+```json
+{
+  "action": {
+    "category": "billing",
+    "priority": "high",
+    "department": "finance",
+    "action": "reply",
+    "use_tool": "check_payment",
+    "tool_input": {
+      "account_id": "acct_123"
+    }
+  }
+}
+```
+
 ```json
 {
   "category": "billing",

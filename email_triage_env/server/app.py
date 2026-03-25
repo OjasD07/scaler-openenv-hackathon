@@ -7,7 +7,7 @@ from typing import Any
 from fastapi import FastAPI, HTTPException
 
 from ..baseline import run_baseline
-from ..models import GradeRequest, ResetRequest, StepRequest
+from ..models import EmailAction, GradeRequest, ResetRequest, StepRequest
 from ..tasks import get_email_by_id
 from .environment import EmailTriageEnvironment
 
@@ -18,6 +18,29 @@ logging.basicConfig(
 
 app = FastAPI(title="OpenEnv Email Triage Environment", version="1.0.0")
 env = EmailTriageEnvironment()
+
+
+def _resolve_step_action(request: StepRequest) -> EmailAction:
+    if isinstance(request.action, EmailAction):
+        return request.action
+
+    missing_fields = [
+        field_name
+        for field_name in ("category", "priority", "department", "action")
+        if getattr(request, field_name) is None
+    ]
+    if missing_fields:
+        missing = ", ".join(missing_fields)
+        raise HTTPException(status_code=400, detail=f"Missing required step fields: {missing}")
+
+    return EmailAction(
+        category=request.category,
+        priority=request.priority,
+        department=request.department,
+        action=request.action,
+        use_tool=request.use_tool,
+        tool_input=request.tool_input,
+    )
 
 
 @app.get("/")
@@ -52,7 +75,7 @@ def reset(request: ResetRequest) -> dict[str, Any]:
 def step(request: StepRequest) -> dict[str, Any]:
     try:
         env.ensure_initialized()
-        result = env.step(request.action)
+        result = env.step(_resolve_step_action(request))
         return result.model_dump()
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=f"Invalid action: {exc}") from exc
