@@ -277,3 +277,8 @@ docker run -p 7860:7860 email-triage-env
 ## Hugging Face Spaces
 
 This repository is ready for deployment as a Docker Space using `server/Dockerfile`.
+It is currently deployed at: https://ojasd07-email-triage-env.hf.space/docs
+
+## Author
+Ojas Deshpande 
+[contact.ojasdeshpande@gmail.com]
