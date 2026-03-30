@@ -73,6 +73,11 @@ class ResetRequest(BaseModel):
         description="Optional task selector. Defaults to a seeded random task when omitted.",
         examples=[1, 2, 3],
     )
+    episode_id: Optional[int] = Field(
+        default=None,
+        description="Optional episode selector alias for task_id.",
+        examples=[1, 2, 3],
+    )
     email_id: Optional[str] = Field(
         default=None,
         description="Optional email identifier. Defaults to a seeded random email when omitted.",

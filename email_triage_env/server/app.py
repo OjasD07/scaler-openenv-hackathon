@@ -4,11 +4,11 @@ import logging
 import os
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Body, FastAPI, HTTPException
 
 from ..baseline import run_baseline
-from ..models import EmailAction, GradeRequest, ResetRequest, StepRequest
-from ..tasks import get_email_by_id
+from ..models import EmailAction, GradeRequest, ResetRequest
+from ..tasks import TASKS, get_email_by_id
 from .environment import EmailTriageEnvironment
 
 logging.basicConfig(
@@ -18,29 +18,28 @@ logging.basicConfig(
 
 app = FastAPI(title="OpenEnv Email Triage Environment", version="1.0.0")
 env = EmailTriageEnvironment()
+DEFAULT_STEP_ACTION: dict[str, Any] = {
+    "category": "support",
+    "priority": "medium",
+    "department": "support_team",
+    "action": "reply",
+    "use_tool": None,
+    "tool_input": None,
+}
 
 
-def _resolve_step_action(request: StepRequest) -> EmailAction:
-    if isinstance(request.action, EmailAction):
-        return request.action
+def _normalize_step_payload(payload: dict[str, Any] | None) -> EmailAction:
+    raw = dict(payload or {})
+    nested = raw.get("action")
+    if isinstance(nested, dict):
+        raw = {**nested, **{key: value for key, value in raw.items() if key != "action"}}
 
-    missing_fields = [
-        field_name
-        for field_name in ("category", "priority", "department", "action")
-        if getattr(request, field_name) is None
-    ]
-    if missing_fields:
-        missing = ", ".join(missing_fields)
-        raise HTTPException(status_code=400, detail=f"Missing required step fields: {missing}")
+    normalized = dict(DEFAULT_STEP_ACTION)
+    for key in DEFAULT_STEP_ACTION:
+        if key in raw and raw[key] is not None:
+            normalized[key] = raw[key]
 
-    return EmailAction(
-        category=request.category,
-        priority=request.priority,
-        department=request.department,
-        action=request.action,
-        use_tool=request.use_tool,
-        tool_input=request.tool_input,
-    )
+    return EmailAction.model_validate(normalized)
 
 
 @app.get("/")
@@ -58,24 +57,40 @@ def health() -> dict[str, Any]:
 
 
 @app.get("/tasks")
-def list_tasks() -> dict[str, Any]:
-    return env.tasks_payload()
+def list_tasks() -> list[dict[str, Any]]:
+    return [
+        {
+            "name": task.name,
+            "difficulty": task.level,
+            "description": task.description,
+            "action_schema": {
+                "fields": list(task.required_fields),
+                "required_fields": list(task.required_fields),
+            },
+        }
+        for task in TASKS
+    ]
 
 
 @app.post("/reset")
-def reset(request: ResetRequest) -> dict[str, Any]:
+def reset(request: ResetRequest | None = Body(default=None)) -> dict[str, Any]:
     try:
-        observation = env.reset(task_id=request.task_id, email_id=request.email_id, seed=request.seed)
+        observation = env.reset(
+            seed=request.seed if request is not None else None,
+            episode_id=request.episode_id if request is not None else None,
+            task_id=request.task_id if request is not None else None,
+            email_id=request.email_id if request is not None else None,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=f"Invalid request: {exc}") from exc
     return {"observation": observation.model_dump(), "state": env.state().model_dump()}
 
 
 @app.post("/step")
-def step(request: StepRequest) -> dict[str, Any]:
+def step(payload: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
     try:
         env.ensure_initialized()
-        result = env.step(_resolve_step_action(request))
+        result = env.step(_normalize_step_payload(payload))
         return result.model_dump()
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=f"Invalid action: {exc}") from exc
@@ -100,14 +115,29 @@ def grader(request: GradeRequest) -> dict[str, Any]:
 
         task_id = request.task_id or env.state().task_id
         score, breakdown = env.grade(request.action, email_data=email_data, task_id=task_id)
+        score = max(0.0, min(1.0, float(score)))
         return {
             "score": score,
-            "breakdown": breakdown,
-            "task_id": task_id,
-            "email_id": email_data.email_id,
+            "details": {
+                "breakdown": breakdown,
+                "task_id": task_id,
+                "email_id": email_data.email_id,
+            },
         }
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=f"Invalid grader request: {exc}") from exc
+        return {
+            "score": 0.0,
+            "details": {
+                "error": f"Invalid grader request: {exc}",
+            },
+        }
+    except Exception as exc:
+        return {
+            "score": 0.0,
+            "details": {
+                "error": str(exc),
+            },
+        }
 
 
 @app.get("/baseline")

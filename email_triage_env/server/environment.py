@@ -270,7 +270,18 @@ class EmailTriageEnvironment:
         score = max(0.0, min(1.0, score))
         return round(score, 3), breakdown.model_dump()
 
-    def reset(self, task_id: int | None = None, email_id: str | None = None, seed: int | None = None) -> EmailObservation:
+    def reset(
+        self,
+        seed: int | None = None,
+        episode_id: int | None = None,
+        task_id: int | None = None,
+        email_id: str | None = None,
+        **kwargs: Any,
+    ) -> EmailObservation:
+        if task_id is None:
+            task_id = episode_id
+        if task_id is None and "episode_id" in kwargs:
+            task_id = kwargs["episode_id"]
         rng = self._selection_rng(seed)
         resolved_task_id = self._resolve_task_id(task_id, rng)
         inbox = self._build_inbox(resolved_task_id, email_id, rng)
