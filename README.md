@@ -235,6 +235,23 @@ That makes it much closer to a production triage assistant than a standard text 
 
 `baseline.py` runs a strong heuristic baseline by default and can optionally use OpenAI if `OPENAI_API_KEY` is set.
 
+## Submission Runner
+
+`inference.py` is the root-level submission script. It expects these environment variables:
+
+- `API_BASE_URL`
+- `MODEL_NAME`
+- `HF_TOKEN`
+- `LOCAL_IMAGE_NAME` only if you use `from_docker_image()`
+
+The script emits structured stdout in the required format:
+
+- `[START]`
+- `[STEP]`
+- `[END]`
+
+`HF_TOKEN` is optional in the code path, but the submission checklist expects it to be configured in the environment.
+
 Current deterministic heuristic scores:
 
 - Task 1: `0.845`
