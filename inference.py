@@ -6,6 +6,7 @@ from typing import Any
 
 import requests
 from openai import OpenAI
+from pydantic import ValidationError
 
 from email_triage_env.models import EmailAction
 
@@ -112,10 +113,14 @@ def _predict_action(client: OpenAI | None, model_name: str, task_id: int, observ
                 },
             ],
         )
+    except Exception as exc:
+        raise RuntimeError(f"LLM proxy request failed for task {task_id}") from exc
+
+    try:
         content = response.choices[0].message.content or ""
         parsed = _extract_json(content)
         return EmailAction.model_validate(parsed)
-    except Exception:
+    except (json.JSONDecodeError, ValidationError):
         return _fallback_action(email)
 
 
