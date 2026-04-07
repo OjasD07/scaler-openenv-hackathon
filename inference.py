@@ -13,6 +13,10 @@ from email_triage_env.models import EmailAction
 TASKS = (1, 2, 3)
 TASK_NAMES = {1: "easy", 2: "medium", 3: "hard"}
 DEFAULT_MODEL_NAME = "gpt-4.1-mini"
+API_BASE_URL = os.getenv("API_BASE_URL", "http://127.0.0.1:8000")
+MODEL_NAME = os.getenv("MODEL_NAME", DEFAULT_MODEL_NAME)
+HF_TOKEN = os.getenv("HF_TOKEN")
+LOCAL_IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME")
 SEED = 7
 REQUEST_TIMEOUT = 30
 
@@ -199,25 +203,41 @@ def run_task(
 
 
 def main() -> int:
-    base_url = os.getenv("API_BASE_URL", "http://127.0.0.1:8000").rstrip("/")
-    model_name = os.getenv("MODEL_NAME", DEFAULT_MODEL_NAME)
-    hf_token = os.getenv("HF_TOKEN", "")
+    base_url = API_BASE_URL.rstrip("/")
+    model_name = MODEL_NAME
+    hf_token = HF_TOKEN
 
     session = _make_session(hf_token)
-    api_key = os.getenv("OPENAI_API_KEY") or hf_token
-    client = OpenAI(api_key=api_key) if api_key else None
+    client = OpenAI(api_key=hf_token) if hf_token else None
+    _ = LOCAL_IMAGE_NAME
 
-    results = [run_task(session, client, base_url, model_name, task_id) for task_id in TASKS]
+    print("START")
+
+    results = []
+    for task_id in TASKS:
+        result = run_task(session, client, base_url, model_name, task_id)
+        results.append(result)
+        status = "error" if "error" in result else "ok"
+        print(
+            "STEP "
+            f"task_id={result['task_id']} "
+            f"task_name={result['task_name']} "
+            f"status={status} "
+            f"steps={result['steps']} "
+            f"total_reward={result['total_reward']} "
+            f"average_reward={result['average_reward']}"
+        )
+
     overall_total = sum(item["total_reward"] for item in results)
     overall_steps = sum(item["steps"] for item in results)
 
-    summary = {
-        "results": results,
-        "overall_total_reward": round(overall_total, 3),
-        "overall_average_reward": round(overall_total / len(results), 3) if results else 0.0,
-        "overall_average_step_reward": round(overall_total / overall_steps, 3) if overall_steps else 0.0,
-    }
-    print(json.dumps(summary, indent=2))
+    print(
+        "END "
+        f"tasks={len(results)} "
+        f"overall_total_reward={round(overall_total, 3)} "
+        f"overall_average_reward={round(overall_total / len(results), 3) if results else 0.0} "
+        f"overall_average_step_reward={round(overall_total / overall_steps, 3) if overall_steps else 0.0}"
+    )
     return 0
 
 
