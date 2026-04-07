@@ -240,8 +240,8 @@ That makes it much closer to a production triage assistant than a standard text 
 `inference.py` is the root-level submission script. It expects these environment variables:
 
 - `API_BASE_URL`
+- `API_KEY`
 - `MODEL_NAME`
-- `HF_TOKEN`
 - `LOCAL_IMAGE_NAME` only if you use `from_docker_image()`
 
 The script emits structured stdout in the required format:
@@ -250,7 +250,7 @@ The script emits structured stdout in the required format:
 - `[STEP]`
 - `[END]`
 
-`HF_TOKEN` is optional in the code path, but the submission checklist expects it to be configured in the environment.
+`API_KEY` is required for the submission path because the grader injects the LiteLLM proxy credentials through that variable.
 
 Current deterministic heuristic scores:
 

@@ -13,9 +13,7 @@ from email_triage_env.models import EmailAction
 TASKS = (1, 2, 3)
 TASK_NAMES = {1: "easy", 2: "medium", 3: "hard"}
 DEFAULT_MODEL_NAME = "gpt-4.1-mini"
-API_BASE_URL = os.getenv("API_BASE_URL", "http://127.0.0.1:8000")
 MODEL_NAME = os.getenv("MODEL_NAME", DEFAULT_MODEL_NAME)
-HF_TOKEN = os.getenv("HF_TOKEN")
 LOCAL_IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME")
 BENCHMARK = os.getenv("BENCHMARK", "email-triage-env")
 SEED = 7
@@ -249,12 +247,12 @@ def run_task(
 
 
 def main() -> int:
-    base_url = API_BASE_URL.rstrip("/")
+    base_url = _require_env("API_BASE_URL").rstrip("/")
+    api_key = _require_env("API_KEY")
     model_name = MODEL_NAME
-    hf_token = HF_TOKEN
 
-    session = _make_session(hf_token)
-    client = OpenAI(base_url=API_BASE_URL, api_key=hf_token) if hf_token else None
+    session = requests.Session()
+    client = OpenAI(base_url=base_url, api_key=api_key)
     _ = LOCAL_IMAGE_NAME
 
     for task_id in TASKS:
