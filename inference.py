@@ -27,6 +27,13 @@ def _require_env(name: str) -> str:
     return value
 
 
+def _resolve_api_key() -> str:
+    api_key = os.getenv("API_KEY") or os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise RuntimeError("Missing required environment variable: API_KEY or OPENAI_API_KEY")
+    return api_key
+
+
 def _make_session(hf_token: str) -> requests.Session:
     session = requests.Session()
     if hf_token:
@@ -248,7 +255,7 @@ def run_task(
 
 def main() -> int:
     base_url = _require_env("API_BASE_URL").rstrip("/")
-    api_key = _require_env("API_KEY")
+    api_key = _resolve_api_key()
     model_name = MODEL_NAME
 
     session = requests.Session()
