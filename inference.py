@@ -13,7 +13,10 @@ from email_triage_env.models import EmailAction
 TASKS = (1, 2, 3)
 TASK_NAMES = {1: "easy", 2: "medium", 3: "hard"}
 DEFAULT_MODEL_NAME = "gpt-4.1-mini"
+DEFAULT_API_BASE_URL = "https://api.openai.com/v1"
 MODEL_NAME = os.getenv("MODEL_NAME", DEFAULT_MODEL_NAME)
+API_BASE_URL = os.getenv("API_BASE_URL", DEFAULT_API_BASE_URL)
+ENV_BASE_URL = os.getenv("ENV_BASE_URL", "http://127.0.0.1:8000")
 LOCAL_IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME")
 BENCHMARK = os.getenv("BENCHMARK", "email-triage-env")
 SEED = 7
@@ -28,17 +31,10 @@ def _require_env(name: str) -> str:
 
 
 def _resolve_api_key() -> str:
-    api_key = os.getenv("API_KEY") or os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        raise RuntimeError("Missing required environment variable: API_KEY or OPENAI_API_KEY")
-    return api_key
-
-
-def _make_session(hf_token: str) -> requests.Session:
-    session = requests.Session()
-    if hf_token:
-        session.headers.update({"Authorization": f"Bearer {hf_token}"})
-    return session
+    hf_token = os.getenv("HF_TOKEN") or os.getenv("API_KEY") or os.getenv("OPENAI_API_KEY")
+    if not hf_token:
+        raise RuntimeError("Missing required environment variable: HF_TOKEN")
+    return hf_token
 
 
 def _extract_json(text: str) -> dict[str, Any]:
@@ -184,10 +180,10 @@ def _log_step(step: int, action: str, reward: float, done: bool, error: str | No
     )
 
 
-def _log_end(success: bool, steps: int, score: float, rewards: list[float]) -> None:
+def _log_end(success: bool, steps: int, rewards: list[float]) -> None:
     rewards_str = ",".join(f"{reward:.2f}" for reward in rewards)
     print(
-        f"[END] success={str(success).lower()} steps={steps} score={score:.2f} rewards={rewards_str}",
+        f"[END] success={str(success).lower()} steps={steps} rewards={rewards_str}",
         flush=True,
     )
 
@@ -250,16 +246,16 @@ def run_task(
             "error": str(exc),
         }
     finally:
-        _log_end(success=success, steps=step_count, score=score, rewards=rewards)
+        _log_end(success=success, steps=step_count, rewards=rewards)
 
 
 def main() -> int:
-    base_url = _require_env("API_BASE_URL").rstrip("/")
+    base_url = ENV_BASE_URL.rstrip("/")
     api_key = _resolve_api_key()
     model_name = MODEL_NAME
 
     session = requests.Session()
-    client = OpenAI(base_url=base_url, api_key=api_key)
+    client = OpenAI(base_url=API_BASE_URL, api_key=api_key)
     _ = LOCAL_IMAGE_NAME
 
     for task_id in TASKS:

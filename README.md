@@ -240,8 +240,9 @@ That makes it much closer to a production triage assistant than a standard text 
 `inference.py` is the root-level submission script. It expects these environment variables:
 
 - `API_BASE_URL`
-- `API_KEY` or `OPENAI_API_KEY`
+- `HF_TOKEN`
 - `MODEL_NAME`
+- `ENV_BASE_URL` only if your local environment server is not on `http://127.0.0.1:8000`
 - `LOCAL_IMAGE_NAME` only if you use `from_docker_image()`
 
 The script emits structured stdout in the required format:
@@ -250,7 +251,7 @@ The script emits structured stdout in the required format:
 - `[STEP]`
 - `[END]`
 
-`API_KEY` is preferred for the submission path because the grader injects the LiteLLM proxy credentials through that variable, but `OPENAI_API_KEY` is also accepted for local or Space setups.
+`HF_TOKEN` is required for the submission path because the grader injects the proxy credentials through that variable. `API_BASE_URL` has a safe default in code for the LLM endpoint, and `ENV_BASE_URL` is only needed if your triage server is not running locally.
 
 Current deterministic heuristic scores:
 
