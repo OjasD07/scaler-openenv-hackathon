@@ -254,7 +254,7 @@ def main() -> int:
     hf_token = HF_TOKEN
 
     session = _make_session(hf_token)
-    client = OpenAI(api_key=hf_token) if hf_token else None
+    client = OpenAI(base_url=API_BASE_URL, api_key=hf_token) if hf_token else None
     _ = LOCAL_IMAGE_NAME
 
     for task_id in TASKS:
