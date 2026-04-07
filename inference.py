@@ -13,9 +13,7 @@ from email_triage_env.models import EmailAction
 TASKS = (1, 2, 3)
 TASK_NAMES = {1: "easy", 2: "medium", 3: "hard"}
 DEFAULT_MODEL_NAME = "gpt-4.1-mini"
-DEFAULT_API_BASE_URL = "https://api.openai.com/v1"
 MODEL_NAME = os.getenv("MODEL_NAME", DEFAULT_MODEL_NAME)
-API_BASE_URL = os.getenv("API_BASE_URL", DEFAULT_API_BASE_URL)
 ENV_BASE_URL = os.getenv("ENV_BASE_URL", "http://127.0.0.1:8000")
 LOCAL_IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME")
 BENCHMARK = os.getenv("BENCHMARK", "email-triage-env")
@@ -31,10 +29,7 @@ def _require_env(name: str) -> str:
 
 
 def _resolve_api_key() -> str:
-    hf_token = os.getenv("HF_TOKEN") or os.getenv("API_KEY") or os.getenv("OPENAI_API_KEY")
-    if not hf_token:
-        raise RuntimeError("Missing required environment variable: HF_TOKEN")
-    return hf_token
+    return _require_env("API_KEY")
 
 
 def _extract_json(text: str) -> dict[str, Any]:
@@ -255,7 +250,7 @@ def main() -> int:
     model_name = MODEL_NAME
 
     session = requests.Session()
-    client = OpenAI(base_url=API_BASE_URL, api_key=api_key)
+    client = OpenAI(base_url=_require_env("API_BASE_URL"), api_key=api_key)
     _ = LOCAL_IMAGE_NAME
 
     for task_id in TASKS:
