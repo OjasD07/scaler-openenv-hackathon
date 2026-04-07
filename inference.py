@@ -180,10 +180,10 @@ def _log_step(step: int, action: str, reward: float, done: bool, error: str | No
     )
 
 
-def _log_end(success: bool, steps: int, rewards: list[float]) -> None:
+def _log_end(success: bool, steps: int, score: float, rewards: list[float]) -> None:
     rewards_str = ",".join(f"{reward:.2f}" for reward in rewards)
     print(
-        f"[END] success={str(success).lower()} steps={steps} rewards={rewards_str}",
+        f"[END] success={str(success).lower()} steps={steps} score={score:.3f} rewards={rewards_str}",
         flush=True,
     )
 
@@ -246,7 +246,7 @@ def run_task(
             "error": str(exc),
         }
     finally:
-        _log_end(success=success, steps=step_count, rewards=rewards)
+        _log_end(success=success, steps=step_count, score=score, rewards=rewards)
 
 
 def main() -> int:
@@ -255,7 +255,7 @@ def main() -> int:
     model_name = MODEL_NAME
 
     session = requests.Session()
-    client = OpenAI(base_url=_require_env("API_BASE_URL"), api_key=api_key)
+    client = OpenAI(base_url=os.environ["API_BASE_URL"], api_key=os.environ["API_KEY"])
     _ = LOCAL_IMAGE_NAME
 
     for task_id in TASKS:
