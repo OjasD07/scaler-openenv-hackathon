@@ -315,5 +315,5 @@ This repository is ready for deployment as a Docker Space using `server/Dockerfi
 It is currently deployed at: https://email-triage-env.ojasdeshpande.in/ or https://ojasd07-email-triage-env.hf.space/docs
 
 ## Author
-Ojas Deshpande 
+Ojas Deshpande
 [contact.ojasdeshpande@gmail.com]
