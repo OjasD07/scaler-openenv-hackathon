@@ -63,7 +63,7 @@ def _fallback_action(email: dict[str, Any]) -> EmailAction:
     return EmailAction(category="support", priority="high" if any(marker in text for marker in ["urgent", "blocked", "outage", "down", "cannot", "asap"]) else "medium", department="support_team", action="reply")
 
 
-def _predict_action(client: OpenAI, model_name: str, task_id: int, observation: dict[str, Any]) -> EmailAction:
+def _predict_action(client: OpenAI | None, model_name: str, task_id: int, observation: dict[str, Any]) -> EmailAction:
     email = observation["current_email"]
     prompt = {
         "task_id": task_id,
@@ -84,6 +84,9 @@ def _predict_action(client: OpenAI, model_name: str, task_id: int, observation: 
             "action": ["reply", "forward", "archive", "escalate"],
         },
     }
+
+    if client is None:
+        return _fallback_action(email)
 
     try:
         response = client.chat.completions.create(
@@ -142,25 +145,49 @@ def _step_episode(
     return response.json()
 
 
+def _empty_result(task_id: int, error: str | None = None) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "task_id": task_id,
+        "task_name": TASK_NAMES.get(task_id, str(task_id)),
+        "steps": 0,
+        "total_reward": 0.0,
+        "average_reward": 0.0,
+    }
+    if error:
+        result["error"] = error
+    return result
+
+
 def run_task(
     session: requests.Session,
-    client: OpenAI,
+    client: OpenAI | None,
     base_url: str,
     model_name: str,
     task_id: int,
 ) -> dict[str, Any]:
-    observation = _reset_episode(session, base_url, task_id)
+    try:
+        observation = _reset_episode(session, base_url, task_id)
+    except Exception as exc:
+        return _empty_result(task_id, f"reset failed: {exc}")
+
     total_reward = 0.0
     step_count = 0
     done = False
 
     while not done:
-        action = _predict_action(client, model_name, task_id, observation)
-        result = _step_episode(session, base_url, action)
-        total_reward += float(result.get("reward", 0.0))
-        step_count += 1
-        done = bool(result.get("done", False))
-        observation = result["observation"]
+        try:
+            action = _predict_action(client, model_name, task_id, observation)
+            result = _step_episode(session, base_url, action)
+        except Exception as exc:
+            return _empty_result(task_id, f"step failed: {exc}")
+
+        try:
+            total_reward += float(result.get("reward", 0.0))
+            step_count += 1
+            done = bool(result.get("done", False))
+            observation = result["observation"]
+        except Exception as exc:
+            return _empty_result(task_id, f"response parsing failed: {exc}")
 
     return {
         "task_id": task_id,
@@ -172,12 +199,13 @@ def run_task(
 
 
 def main() -> int:
-    base_url = _require_env("API_BASE_URL").rstrip("/")
+    base_url = os.getenv("API_BASE_URL", "http://127.0.0.1:8000").rstrip("/")
     model_name = os.getenv("MODEL_NAME", DEFAULT_MODEL_NAME)
-    hf_token = _require_env("HF_TOKEN")
+    hf_token = os.getenv("HF_TOKEN", "")
 
     session = _make_session(hf_token)
-    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY") or hf_token)
+    api_key = os.getenv("OPENAI_API_KEY") or hf_token
+    client = OpenAI(api_key=api_key) if api_key else None
 
     results = [run_task(session, client, base_url, model_name, task_id) for task_id in TASKS]
     overall_total = sum(item["total_reward"] for item in results)
