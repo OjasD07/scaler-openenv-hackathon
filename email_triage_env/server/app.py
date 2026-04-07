@@ -16,7 +16,7 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s %(message)s",
 )
 
-app = FastAPI(title="OpenEnv Email Triage Environment", version="1.0.0")
+app = FastAPI(title="OpenEnv Email Triage Environment", version="2.1.0")
 env = EmailTriageEnvironment()
 DEFAULT_STEP_ACTION: dict[str, Any] = {
     "category": "support",
