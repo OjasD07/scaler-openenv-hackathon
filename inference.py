@@ -17,6 +17,7 @@ API_BASE_URL = os.getenv("API_BASE_URL", "http://127.0.0.1:8000")
 MODEL_NAME = os.getenv("MODEL_NAME", DEFAULT_MODEL_NAME)
 HF_TOKEN = os.getenv("HF_TOKEN")
 LOCAL_IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME")
+BENCHMARK = os.getenv("BENCHMARK", "email-triage-env")
 SEED = 7
 REQUEST_TIMEOUT = 30
 
@@ -162,6 +163,30 @@ def _empty_result(task_id: int, error: str | None = None) -> dict[str, Any]:
     return result
 
 
+def _format_action(action: EmailAction) -> str:
+    return json.dumps(action.model_dump(exclude_none=True), separators=(",", ":"))
+
+
+def _log_start(task_name: str, model_name: str) -> None:
+    print(f"[START] task={task_name} env={BENCHMARK} model={model_name}", flush=True)
+
+
+def _log_step(step: int, action: str, reward: float, done: bool, error: str | None) -> None:
+    error_val = error if error is not None else "null"
+    print(
+        f"[STEP] step={step} action={action} reward={reward:.2f} done={str(done).lower()} error={error_val}",
+        flush=True,
+    )
+
+
+def _log_end(success: bool, steps: int, score: float, rewards: list[float]) -> None:
+    rewards_str = ",".join(f"{reward:.2f}" for reward in rewards)
+    print(
+        f"[END] success={str(success).lower()} steps={steps} score={score:.2f} rewards={rewards_str}",
+        flush=True,
+    )
+
+
 def run_task(
     session: requests.Session,
     client: OpenAI | None,
@@ -169,37 +194,58 @@ def run_task(
     model_name: str,
     task_id: int,
 ) -> dict[str, Any]:
-    try:
-        observation = _reset_episode(session, base_url, task_id)
-    except Exception as exc:
-        return _empty_result(task_id, f"reset failed: {exc}")
-
-    total_reward = 0.0
+    task_name = TASK_NAMES.get(task_id, str(task_id))
+    rewards: list[float] = []
     step_count = 0
     done = False
+    success = False
+    score = 0.0
 
-    while not done:
-        try:
+    _log_start(task_name, model_name)
+    try:
+        observation = _reset_episode(session, base_url, task_id)
+        while not done:
             action = _predict_action(client, model_name, task_id, observation)
-            result = _step_episode(session, base_url, action)
-        except Exception as exc:
-            return _empty_result(task_id, f"step failed: {exc}")
+            action_str = _format_action(action)
 
-        try:
-            total_reward += float(result.get("reward", 0.0))
-            step_count += 1
-            done = bool(result.get("done", False))
-            observation = result["observation"]
-        except Exception as exc:
-            return _empty_result(task_id, f"response parsing failed: {exc}")
+            try:
+                result = _step_episode(session, base_url, action)
+                reward = float(result.get("reward", 0.0))
+                done = bool(result.get("done", False))
+                observation = result["observation"]
+                rewards.append(reward)
+                step_count += 1
+                _log_step(step_count, action_str, reward, done, None)
+            except Exception as exc:
+                _log_step(step_count + 1, action_str, 0.0, False, str(exc))
+                break
 
-    return {
-        "task_id": task_id,
-        "task_name": TASK_NAMES.get(task_id, str(task_id)),
-        "steps": step_count,
-        "total_reward": round(total_reward, 3),
-        "average_reward": round(total_reward / step_count, 3) if step_count else 0.0,
-    }
+        score = round(sum(rewards) / len(rewards), 2) if rewards else 0.0
+        score = max(0.0, min(1.0, score))
+        success = done and not rewards or (done and score >= 0.1)
+        return {
+            "task_id": task_id,
+            "task_name": task_name,
+            "steps": step_count,
+            "total_reward": round(sum(rewards), 3),
+            "average_reward": round(sum(rewards) / step_count, 3) if step_count else 0.0,
+            "score": score,
+            "success": success,
+        }
+    except Exception as exc:
+        score = 0.0
+        return {
+            "task_id": task_id,
+            "task_name": task_name,
+            "steps": step_count,
+            "total_reward": round(sum(rewards), 3),
+            "average_reward": round(sum(rewards) / step_count, 3) if step_count else 0.0,
+            "score": score,
+            "success": False,
+            "error": str(exc),
+        }
+    finally:
+        _log_end(success=success, steps=step_count, score=score, rewards=rewards)
 
 
 def main() -> int:
@@ -211,33 +257,8 @@ def main() -> int:
     client = OpenAI(api_key=hf_token) if hf_token else None
     _ = LOCAL_IMAGE_NAME
 
-    print("START")
-
-    results = []
     for task_id in TASKS:
-        result = run_task(session, client, base_url, model_name, task_id)
-        results.append(result)
-        status = "error" if "error" in result else "ok"
-        print(
-            "STEP "
-            f"task_id={result['task_id']} "
-            f"task_name={result['task_name']} "
-            f"status={status} "
-            f"steps={result['steps']} "
-            f"total_reward={result['total_reward']} "
-            f"average_reward={result['average_reward']}"
-        )
-
-    overall_total = sum(item["total_reward"] for item in results)
-    overall_steps = sum(item["steps"] for item in results)
-
-    print(
-        "END "
-        f"tasks={len(results)} "
-        f"overall_total_reward={round(overall_total, 3)} "
-        f"overall_average_reward={round(overall_total / len(results), 3) if results else 0.0} "
-        f"overall_average_step_reward={round(overall_total / overall_steps, 3) if overall_steps else 0.0}"
-    )
+        run_task(session, client, base_url, model_name, task_id)
     return 0
 
 
