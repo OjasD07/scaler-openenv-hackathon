@@ -30,15 +30,18 @@ def _score_keyword_hits(text: str, keywords: list[str]) -> int:
 
 
 def _warmup_proxy(client: OpenAI, model: str) -> None:
-    client.chat.completions.create(
-        model=model,
-        temperature=0,
-        max_tokens=1,
-        messages=[
-            {"role": "system", "content": "Reply with OK."},
-            {"role": "user", "content": "OK"},
-        ],
-    )
+    try:
+        client.chat.completions.create(
+            model=model,
+            temperature=0,
+            max_tokens=1,
+            messages=[
+                {"role": "system", "content": "Reply with OK."},
+                {"role": "user", "content": "OK"},
+            ],
+        )
+    except Exception:
+        pass
 
 
 def _normalize_text(email: EmailExample) -> str:

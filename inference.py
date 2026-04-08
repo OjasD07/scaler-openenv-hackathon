@@ -41,15 +41,18 @@ def _build_proxy_client() -> OpenAI:
 
 
 def _warmup_proxy(client: OpenAI, model_name: str) -> None:
-    client.chat.completions.create(
-        model=model_name,
-        temperature=0,
-        max_tokens=1,
-        messages=[
-            {"role": "system", "content": "Reply with OK."},
-            {"role": "user", "content": "OK"},
-        ],
-    )
+    try:
+        client.chat.completions.create(
+            model=model_name,
+            temperature=0,
+            max_tokens=1,
+            messages=[
+                {"role": "system", "content": "Reply with OK."},
+                {"role": "user", "content": "OK"},
+            ],
+        )
+    except Exception:
+        pass
 
 
 def _extract_json(text: str) -> dict[str, Any]:
