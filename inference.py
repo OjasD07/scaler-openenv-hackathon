@@ -252,12 +252,12 @@ def run_task(
 
 def main() -> int:
     base_url = ENV_BASE_URL.rstrip("/")
-    api_key = HF_TOKEN or os.getenv("API_KEY")
+    api_key = os.environ.get("API_KEY")
     if not api_key:
-        api_key = _resolve_api_key()
+        api_key = HF_TOKEN or _resolve_api_key()
 
     session = requests.Session()
-    client = OpenAI(base_url=API_BASE_URL, api_key=api_key)
+    client = OpenAI(base_url=os.environ.get("API_BASE_URL", API_BASE_URL), api_key=api_key)
     _ = LOCAL_IMAGE_NAME
 
     for task_id in TASKS:
