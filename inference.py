@@ -13,7 +13,6 @@ from email_triage_env.models import EmailAction
 
 TASKS = (1, 2, 3)
 TASK_NAMES = {1: "easy", 2: "medium", 3: "hard"}
-API_BASE_URL = os.getenv("API_BASE_URL", "http://127.0.0.1:8000/v1")
 MODEL_NAME = os.getenv("MODEL_NAME", "gpt-4.1-mini")
 HF_TOKEN = os.getenv("HF_TOKEN")
 ENV_BASE_URL = os.getenv("ENV_BASE_URL", "http://127.0.0.1:8000")
@@ -32,6 +31,25 @@ def _require_env(name: str) -> str:
 
 def _resolve_api_key() -> str:
     return _require_env("API_KEY")
+
+
+def _build_proxy_client() -> OpenAI:
+    return OpenAI(
+        base_url=_require_env("API_BASE_URL"),
+        api_key=_resolve_api_key(),
+    )
+
+
+def _warmup_proxy(client: OpenAI, model_name: str) -> None:
+    client.chat.completions.create(
+        model=model_name,
+        temperature=0,
+        max_tokens=1,
+        messages=[
+            {"role": "system", "content": "Reply with OK."},
+            {"role": "user", "content": "OK"},
+        ],
+    )
 
 
 def _extract_json(text: str) -> dict[str, Any]:
@@ -254,7 +272,8 @@ def main() -> int:
     base_url = ENV_BASE_URL.rstrip("/")
 
     session = requests.Session()
-    client = OpenAI(base_url=os.environ["API_BASE_URL"], api_key=os.environ["API_KEY"])
+    client = _build_proxy_client()
+    _warmup_proxy(client, MODEL_NAME)
     _ = LOCAL_IMAGE_NAME
 
     for task_id in TASKS:

@@ -233,7 +233,7 @@ That makes it much closer to a production triage assistant than a standard text 
 
 ## Baseline Agent
 
-`baseline.py` runs a strong heuristic baseline by default and can optionally use OpenAI if `OPENAI_API_KEY` is set.
+`baseline.py` runs a strong heuristic baseline by default and uses the LiteLLM proxy when `API_BASE_URL` and `API_KEY` are provided.
 
 ## Submission Runner
 

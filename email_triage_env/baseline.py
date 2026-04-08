@@ -29,6 +29,18 @@ def _score_keyword_hits(text: str, keywords: list[str]) -> int:
     return sum(1 for keyword in keywords if keyword in lower)
 
 
+def _warmup_proxy(client: OpenAI, model: str) -> None:
+    client.chat.completions.create(
+        model=model,
+        temperature=0,
+        max_tokens=1,
+        messages=[
+            {"role": "system", "content": "Reply with OK."},
+            {"role": "user", "content": "OK"},
+        ],
+    )
+
+
 def _normalize_text(email: EmailExample) -> str:
     text = f"{email.sender} {email.subject} {email.email_text} {email.noisy_text or ''}".lower()
     return re.sub(r"\s+", " ", text).strip()
@@ -158,6 +170,11 @@ def _predict_action(email: EmailExample) -> EmailAction:
 
 
 def _openai_predict(email: EmailExample) -> EmailAction | None:
+    if OpenAI is None:
+        return None
+    if not os.getenv("API_BASE_URL") or not os.getenv("API_KEY"):
+        return None
+
     prompt = {
         "email_id": email.email_id,
         "subject": email.subject,
@@ -203,13 +220,15 @@ def predict_action(email: EmailExample) -> EmailAction:
 
 def run_baseline() -> BaselineScores:
     env = EmailTriageEnvironment()
+    if OpenAI is not None and os.getenv("API_BASE_URL") and os.getenv("API_KEY"):
+        _warmup_proxy(OpenAI(base_url=os.environ["API_BASE_URL"], api_key=os.environ["API_KEY"]), os.getenv("MODEL_NAME", "gpt-4o-mini"))
 
     def score_fn(email: EmailExample, task_id: int) -> float:
         predicted = predict_action(email)
         return grade_action(predicted, email_data=email, task_id=task_id)
 
     scores = env.baseline_scores(score_fn)
-    scores.mode = "openai" if (os.getenv("OPENAI_API_KEY") or ("API_KEY" in os.environ and "API_BASE_URL" in os.environ)) and OpenAI is not None else "heuristic"
+    scores.mode = "openai" if OpenAI is not None and os.getenv("API_BASE_URL") and os.getenv("API_KEY") else "heuristic"
     return scores
 
 
