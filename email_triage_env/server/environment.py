@@ -32,6 +32,8 @@ CATEGORY_SIMILARITY: dict[tuple[str, str], float] = {
 }
 
 logger = logging.getLogger(__name__)
+SCORE_FLOOR = 0.001
+SCORE_CEILING = 0.999
 
 
 @dataclass(slots=True)
@@ -55,6 +57,14 @@ class EmailTriageEnvironment:
         self._cursor = 0
         self._episode_counter = 0
         self._runtime = _RuntimeState()
+
+    def _strict_score(self, value: float) -> float:
+        score = round(float(value), 3)
+        if score <= SCORE_FLOOR:
+            return SCORE_FLOOR
+        if score >= SCORE_CEILING:
+            return SCORE_CEILING
+        return score
 
     def _episode_size(self, task_id: int) -> int:
         return 3 if task_id == 1 else 4 if task_id == 2 else 5
@@ -267,8 +277,7 @@ class EmailTriageEnvironment:
             score += 0.05
             breakdown.tool_used = 1
 
-        score = max(0.0, min(1.0, score))
-        return round(score, 3), breakdown.model_dump()
+        return self._strict_score(score), breakdown.model_dump()
 
     def reset(
         self,
@@ -452,9 +461,9 @@ class EmailTriageEnvironment:
         }
         overall = sum(averages.values()) / 3.0
         return BaselineScores(
-            task_1=round(averages[1], 3),
-            task_2=round(averages[2], 3),
-            task_3=round(averages[3], 3),
-            average=round(overall, 3),
+            task_1=self._strict_score(averages[1]),
+            task_2=self._strict_score(averages[2]),
+            task_3=self._strict_score(averages[3]),
+            average=self._strict_score(overall),
             mode="heuristic",
         )

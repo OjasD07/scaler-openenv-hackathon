@@ -20,6 +20,8 @@ LOCAL_IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME")
 BENCHMARK = os.getenv("BENCHMARK", "email-triage-env")
 SEED = 7
 REQUEST_TIMEOUT = 30
+SCORE_FLOOR = 0.001
+SCORE_CEILING = 0.999
 
 
 def _require_env(name: str) -> str:
@@ -53,6 +55,15 @@ def _warmup_proxy(client: OpenAI, model_name: str) -> None:
         )
     except Exception:
         pass
+
+
+def _strict_score(value: float) -> float:
+    score = round(float(value), 3)
+    if score <= SCORE_FLOOR:
+        return SCORE_FLOOR
+    if score >= SCORE_CEILING:
+        return SCORE_CEILING
+    return score
 
 
 def _extract_json(text: str) -> dict[str, Any]:
@@ -243,8 +254,7 @@ def run_task(
                 _log_step(step_count + 1, action_str, 0.0, False, str(exc))
                 break
 
-        score = round(sum(rewards) / len(rewards), 2) if rewards else 0.0
-        score = max(0.0, min(1.0, score))
+        score = _strict_score(round(sum(rewards) / len(rewards), 2) if rewards else 0.0)
         success = done and not rewards or (done and score >= 0.1)
         return {
             "task_id": task_id,
@@ -256,7 +266,7 @@ def run_task(
             "success": success,
         }
     except Exception as exc:
-        score = 0.0
+        score = SCORE_FLOOR
         return {
             "task_id": task_id,
             "task_name": task_name,

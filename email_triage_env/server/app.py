@@ -18,6 +18,8 @@ logging.basicConfig(
 
 app = FastAPI(title="OpenEnv Email Triage Environment", version="2.1.0")
 env = EmailTriageEnvironment()
+SCORE_FLOOR = 0.001
+SCORE_CEILING = 0.999
 DEFAULT_STEP_ACTION: dict[str, Any] = {
     "category": "support",
     "priority": "medium",
@@ -40,6 +42,15 @@ def _normalize_step_payload(payload: dict[str, Any] | None) -> EmailAction:
             normalized[key] = raw[key]
 
     return EmailAction.model_validate(normalized)
+
+
+def _strict_score(value: float) -> float:
+    score = round(float(value), 3)
+    if score <= SCORE_FLOOR:
+        return SCORE_FLOOR
+    if score >= SCORE_CEILING:
+        return SCORE_CEILING
+    return score
 
 
 @app.get("/")
@@ -115,7 +126,7 @@ def grader(request: GradeRequest) -> dict[str, Any]:
 
         task_id = request.task_id or env.state().task_id
         score, breakdown = env.grade(request.action, email_data=email_data, task_id=task_id)
-        score = max(0.0, min(1.0, float(score)))
+        score = _strict_score(float(score))
         return {
             "score": score,
             "details": {
