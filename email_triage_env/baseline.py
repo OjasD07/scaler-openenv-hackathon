@@ -158,15 +158,6 @@ def _predict_action(email: EmailExample) -> EmailAction:
 
 
 def _openai_predict(email: EmailExample) -> EmailAction | None:
-    if "API_BASE_URL" in os.environ and "API_KEY" in os.environ:
-        client = OpenAI(base_url=os.environ["API_BASE_URL"], api_key=os.environ["API_KEY"])
-        model = os.getenv("MODEL_NAME", "gpt-4o-mini")
-    else:
-        api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key or OpenAI is None:
-            return None
-        client = OpenAI(api_key=api_key)
-        model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
     prompt = {
         "email_id": email.email_id,
         "subject": email.subject,
@@ -179,6 +170,8 @@ def _openai_predict(email: EmailExample) -> EmailAction | None:
     }
 
     try:
+        client = OpenAI(base_url=os.environ["API_BASE_URL"], api_key=os.environ["API_KEY"])
+        model = os.getenv("MODEL_NAME", "gpt-4o-mini")
         response = client.chat.completions.create(
             model=model,
             messages=[
