@@ -3,13 +3,16 @@ from __future__ import annotations
 import json
 import os
 from typing import Any
+from urllib.parse import urlparse
 
 import requests
+from fastapi.testclient import TestClient
 from openai import OpenAI
 from pydantic import ValidationError
 
 from email_triage_env.baseline import predict_action as heuristic_predict_action
 from email_triage_env.models import EmailAction, EmailExample
+from email_triage_env.server.app import app
 
 
 TASKS = (1, 2, 3)
@@ -23,6 +26,19 @@ SEED = 7
 REQUEST_TIMEOUT = 30
 SCORE_FLOOR = 0.001
 SCORE_CEILING = 0.999
+
+
+class _LocalAppSession:
+    def __init__(self) -> None:
+        self.client = TestClient(app)
+
+    def post(self, url: str, **kwargs: Any):
+        kwargs.pop("timeout", None)
+        return self.client.post(urlparse(url).path, **kwargs)
+
+    def get(self, url: str, **kwargs: Any):
+        kwargs.pop("timeout", None)
+        return self.client.get(urlparse(url).path, **kwargs)
 
 
 def _require_env(name: str) -> str:
@@ -63,6 +79,21 @@ def _warmup_proxy(client: OpenAI, model_name: str) -> None:
         )
     except Exception:
         pass
+
+
+def _env_server_available(base_url: str) -> bool:
+    try:
+        response = requests.get(f"{base_url}/health", timeout=5)
+        response.raise_for_status()
+        return True
+    except Exception:
+        return False
+
+
+def _build_env_session(base_url: str) -> tuple[Any, str]:
+    if _env_server_available(base_url):
+        return requests.Session(), base_url
+    return _LocalAppSession(), "http://local.test"
 
 
 def _strict_score(value: float) -> float:
@@ -275,9 +306,7 @@ def run_task(
 
 
 def main() -> int:
-    base_url = ENV_BASE_URL.rstrip("/")
-
-    session = requests.Session()
+    session, base_url = _build_env_session(ENV_BASE_URL.rstrip("/"))
     client = _build_proxy_client()
     if client is not None:
         _warmup_proxy(client, MODEL_NAME)
