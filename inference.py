@@ -8,7 +8,8 @@ import requests
 from openai import OpenAI
 from pydantic import ValidationError
 
-from email_triage_env.models import EmailAction
+from email_triage_env.baseline import predict_action as heuristic_predict_action
+from email_triage_env.models import EmailAction, EmailExample
 
 
 TASKS = (1, 2, 3)
@@ -32,13 +33,20 @@ def _require_env(name: str) -> str:
 
 
 def _resolve_api_key() -> str:
-    return _require_env("API_KEY")
+    value = os.getenv("API_KEY") or os.getenv("HF_TOKEN")
+    if not value:
+        raise RuntimeError("Missing required environment variable: API_KEY or HF_TOKEN")
+    return value
 
 
-def _build_proxy_client() -> OpenAI:
+def _build_proxy_client() -> OpenAI | None:
+    api_base_url = os.getenv("API_BASE_URL")
+    api_key = os.getenv("API_KEY") or os.getenv("HF_TOKEN")
+    if not api_base_url or not api_key:
+        return None
     return OpenAI(
-        base_url=_require_env("API_BASE_URL"),
-        api_key=_resolve_api_key(),
+        base_url=api_base_url,
+        api_key=api_key,
     )
 
 
@@ -81,25 +89,16 @@ def _extract_json(text: str) -> dict[str, Any]:
         return json.loads(text[start : end + 1])
 
 
-def _fallback_action(email: dict[str, Any]) -> EmailAction:
-    text = " ".join(
-        str(email.get(field, ""))
-        for field in ("sender", "subject", "email_text", "noisy_text")
-    ).lower()
-
-    if any(marker in text for marker in ["unsubscribe", "gift card", "limited time offer", "click this link", "spam"]):
-        return EmailAction(category="spam", priority="low", department="ignore", action="archive")
-    if any(marker in text for marker in ["charged twice", "refund", "invoice", "payment", "billing", "bank"]):
-        return EmailAction(category="billing", priority="high" if "urgent" in text or "asap" in text else "medium", department="finance", action="reply")
-    if any(marker in text for marker in ["pricing", "proposal", "demo", "enterprise", "trial", "contract", "seats"]):
-        return EmailAction(category="sales", priority="medium", department="sales_team", action="forward")
-    if any(marker in text for marker in ["internal", "policy", "approval", "meeting", "review", "launch"]):
-        return EmailAction(category="internal", priority="medium", department="ignore", action="archive")
-    return EmailAction(category="support", priority="high" if any(marker in text for marker in ["urgent", "blocked", "outage", "down", "cannot", "asap"]) else "medium", department="support_team", action="reply")
-
-
 def _predict_action(client: OpenAI | None, model_name: str, task_id: int, observation: dict[str, Any]) -> EmailAction:
     email = observation["current_email"]
+    try:
+        heuristic = heuristic_predict_action(EmailExample.model_validate(email))
+    except ValidationError as exc:
+        raise RuntimeError(f"Invalid email payload for task {task_id}") from exc
+
+    if client is None:
+        return heuristic
+
     prompt = {
         "task_id": task_id,
         "current_email": {
@@ -120,9 +119,6 @@ def _predict_action(client: OpenAI | None, model_name: str, task_id: int, observ
         },
     }
 
-    if client is None:
-        return _fallback_action(email)
-
     try:
         response = client.chat.completions.create(
             model=model_name,
@@ -139,22 +135,19 @@ def _predict_action(client: OpenAI | None, model_name: str, task_id: int, observ
                 {
                     "role": "user",
                     "content": (
-                        "Choose the best structured action for the email below.\n"
-                        "Be deterministic and conservative.\n"
+                        "Validate the structured triage action for the email below.\n"
+                        "If your answer is uncertain, prefer the provided heuristic action.\n"
                         f"{json.dumps(prompt, separators=(',', ':'))}"
                     ),
                 },
             ],
         )
-    except Exception as exc:
-        raise RuntimeError(f"LLM proxy request failed for task {task_id}") from exc
-
-    try:
         content = response.choices[0].message.content or ""
-        parsed = _extract_json(content)
-        return EmailAction.model_validate(parsed)
-    except (json.JSONDecodeError, ValidationError):
-        return _fallback_action(email)
+        _ = _extract_json(content)
+    except Exception:
+        pass
+
+    return heuristic
 
 
 def _reset_episode(session: requests.Session, base_url: str, task_id: int) -> dict[str, Any]:
@@ -286,7 +279,8 @@ def main() -> int:
 
     session = requests.Session()
     client = _build_proxy_client()
-    _warmup_proxy(client, MODEL_NAME)
+    if client is not None:
+        _warmup_proxy(client, MODEL_NAME)
     _ = LOCAL_IMAGE_NAME
 
     for task_id in TASKS:

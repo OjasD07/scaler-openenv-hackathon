@@ -23,6 +23,85 @@ IMPORTANT_CATEGORY_KEYWORDS = {
     "spam": ["gift card", "claim your prize", "click this link", "limited time", "coupon", "password immediately", "unsubscribe", "offer"],
 }
 
+SPAM_MARKERS = [
+    "unsubscribe",
+    "gift card",
+    "claim your prize",
+    "coupon",
+    "password immediately",
+    "newsletter",
+    "digest",
+    "click this link",
+    "limited time offer",
+    "attached invoice",
+    "open the file",
+    "confirm payment details",
+]
+
+INTERNAL_MARKERS = [
+    "@acme.internal",
+    "acme.local",
+    ".internal",
+    "corp.local",
+    "internal.tools",
+    "policy",
+    "board",
+    "launch",
+    "checklist",
+    "approval",
+    "meeting",
+    "review",
+    "employee",
+    "office",
+    "security",
+]
+
+SALES_MARKERS = [
+    "pricing",
+    "price",
+    "buy",
+    "purchase",
+    "demo",
+    "proposal",
+    "enterprise",
+    "contract",
+    "seats",
+    "partnership",
+    "quote",
+    "trial",
+]
+
+SUPPORT_MARKERS = [
+    "login",
+    "help",
+    "bug",
+    "error",
+    "timeout",
+    "outage",
+    "down",
+    "broken",
+    "access",
+    "checkout",
+    "not arrived",
+    "tracking says delivered",
+    "user error",
+    "system issue",
+]
+
+BILLING_MARKERS = [
+    "charged twice",
+    "double charge",
+    "duplicate charge",
+    "duplicate billing",
+    "incorrect billing",
+    "refund",
+    "invoice",
+    "payment",
+    "billing",
+    "money back",
+    "tax invoice",
+]
+
 
 def _score_keyword_hits(text: str, keywords: list[str]) -> int:
     lower = text.lower()
@@ -50,72 +129,75 @@ def _normalize_text(email: EmailExample) -> str:
 
 
 def _classify_category(text: str) -> str:
+    if any(marker in text for marker in SPAM_MARKERS):
+        return "spam"
+
+    if any(marker in text for marker in INTERNAL_MARKERS[:4]):
+        return "internal"
+
     scores = {
-        "spam": _score_keyword_hits(text, IMPORTANT_CATEGORY_KEYWORDS["spam"]),
-        "billing": _score_keyword_hits(text, IMPORTANT_CATEGORY_KEYWORDS["billing"]),
-        "support": _score_keyword_hits(text, IMPORTANT_CATEGORY_KEYWORDS["support"]),
-        "sales": _score_keyword_hits(text, IMPORTANT_CATEGORY_KEYWORDS["sales"]),
-        "internal": _score_keyword_hits(text, IMPORTANT_CATEGORY_KEYWORDS["internal"]),
+        "sales": _score_keyword_hits(text, SALES_MARKERS) * 2
+        + _score_keyword_hits(text, ["rollout blocker", "partnership ask", "want to buy", "need proposal", "compare pricing"]),
+        "billing": _score_keyword_hits(text, BILLING_MARKERS) * 2
+        + _score_keyword_hits(text, ["money back", "duplicate billing", "incorrect billing", "payment reset", "bank says pending", "month-end close", "statement update"]),
+        "support": _score_keyword_hits(text, SUPPORT_MARKERS) * 2
+        + _score_keyword_hits(text, ["package", "tracking", "onboarding", "checkout bug", "system down", "blocked", "affecting everyone", "login issue", "trial issue", "cannot log in", "failing"]),
+        "internal": _score_keyword_hits(text, INTERNAL_MARKERS[4:]) * 2,
     }
 
-    if any(
-        marker in text
-        for marker in [
-            "unsubscribe",
-            "gift card",
-            "claim your prize",
-            "coupon",
-            "password immediately",
-            "newsletter",
-            "digest",
-            "attached invoice",
-            "open the file",
-            "confirm payment details",
-        ]
-    ):
-        return "spam"
-    if any(marker in text for marker in ["@acme.internal", ".internal", "corp.local", "internal.tools"]):
-        return "internal"
-    if any(marker in text for marker in ["package arrived", "damaged", "broken", "not arrived", "tracking says delivered", "verify phone", "sms verification", "onboarding"]):
-        return "support"
-    if scores["billing"] >= 2 or any(marker in text for marker in ["charged twice", "duplicate charge", "refund", "invoice", "vat", "tax", "payment", "bank"]):
-        return "billing"
-    if scores["support"] >= 2 or any(marker in text for marker in ["error", "bug", "login", "help", "broken", "timeout", "outage", "404", "checkout", "cannot verify"]):
-        return "support"
-    if scores["sales"] >= 2 or any(marker in text for marker in ["pricing", "price", "buy", "demo", "proposal", "enterprise", "contract", "seats", "co-marketing", "partnership", "trial"]):
+    if "pricing" in text or "proposal" in text or "buy" in text or "partnership" in text or "seats" in text or "quote" in text:
+        scores["sales"] += 3
+    if "charged twice" in text or "duplicate billing" in text or "incorrect billing" in text or "refund" in text:
+        scores["billing"] += 3
+    if "outage" in text or "system down" in text or "blocked" in text or "checkout bug" in text or "login issue" in text:
+        scores["support"] += 3
+    if "policy update" in text or "board deck" in text or "launch checklist" in text or "compliance audit" in text:
+        scores["internal"] += 4
+    if "trial issue" in text or "login issue" in text or "cannot log in" in text:
+        scores["support"] += 2
+    if "invoice still pending" in text or "month-end close" in text or "statement update" in text:
+        scores["billing"] += 4
+
+    if scores["sales"] >= max(scores["support"], scores["billing"], scores["internal"]):
         return "sales"
-    if scores["internal"] >= 1 or any(marker in text for marker in ["review", "policy", "board", "launch", "checklist", "approval", "meeting", "internal", "employee", "office", "security"]):
-        return "internal"
-    return "support" if "system issue" in text or "user error" in text else "internal"
+    if scores["billing"] >= max(scores["support"], scores["internal"]):
+        return "billing"
+    if scores["support"] >= scores["internal"]:
+        return "support"
+    return "internal"
 
 
 def _predict_priority(text: str, category: str) -> str:
-    urgent_markers = [
-        "urgent",
-        "asap",
-        "immediately",
-        "today",
-        "blocked",
-        "outage",
-        "high priority",
-        "cannot",
-        "stuck",
-        "duplicate",
-        "charged twice",
-        "not arrived",
-        "missing vat",
-        "tax invoice",
-        "500 seats",
-        "proposal",
-    ]
     if category == "spam":
         return "low"
-    if category == "sales" and any(marker in text for marker in ["promotion", "discount", "save", "free trial"]):
+
+    urgent_markers = ["urgent", "asap", "immediately", "today", "blocked", "outage", "high priority", "cannot", "stuck"]
+    severe_markers = [
+        "charged twice",
+        "duplicate billing",
+        "incorrect billing",
+        "double charge",
+        "outage",
+        "system down",
+        "blocked",
+        "not arrived",
+        "tracking says delivered",
+        "needs attention today",
+        "affecting everyone",
+    ]
+
+    if category == "sales" and any(marker in text for marker in ["promotion", "discount", "save", "free trial", "newsletter", "digest"]):
         return "low"
+
     if category == "internal" and any(marker in text for marker in ["policy update", "kitchen supplies", "digest", "announcement", "reminder"]):
         return "low"
+
     if any(marker in text for marker in urgent_markers):
         return "high"
+
+    if any(marker in text for marker in severe_markers):
+        return "high"
+
     if category in {"billing", "support"} and any(marker in text for marker in ["question", "confirm", "check", "not sure", "maybe", "help", "issue"]):
         return "medium"
     return "medium" if category in {"billing", "support", "sales", "internal"} else "low"
@@ -134,7 +216,23 @@ def _predict_action(email: EmailExample) -> EmailAction:
         action = "reply"
     elif category == "support":
         department = "support_team"
-        action = "escalate" if any(marker in text for marker in ["outage", "blocked", "critical", "urgent", "system issue", "404 error"]) else "reply"
+        action = "escalate" if any(
+            marker in text
+            for marker in [
+                "outage",
+                "blocked",
+                "critical",
+                "urgent",
+                "system issue",
+                "404 error",
+                "down",
+                "affecting everyone",
+                "multiple teams",
+                "checkout bug",
+                "payment errors",
+                "needs attention today",
+            ]
+        ) else "reply"
     elif category == "sales":
         department = "sales_team"
         action = "forward"
@@ -145,19 +243,26 @@ def _predict_action(email: EmailExample) -> EmailAction:
     if category == "support" and any(marker in text for marker in ["tracking says delivered", "not arrived", "check my order", "package"]):
         action = "reply"
         priority = "high" if "not arrived" in text or "tracking says delivered" in text else priority
+    if category == "support" and any(marker in text for marker in ["system down", "outage", "blocked", "affecting everyone", "multiple teams"]):
+        action = "escalate"
+        priority = "high"
     if category == "billing" and any(marker in text for marker in ["think i was charged twice", "not sure if it was my bank", "duplicate"]):
+        priority = "high"
+    if category == "billing" and any(marker in text for marker in ["incorrect billing", "duplicate billing", "charged twice", "double charge"]):
         priority = "high"
     if category == "sales" and any(marker in text for marker in ["buy", "price", "pricing", "proposal", "enterprise"]):
         department = "sales_team"
+        action = "forward"
     if category == "internal" and "urgent" in text:
         priority = "high"
         action = "escalate"
-    if category == "support" and any(marker in text for marker in ["404 error", "checkout bug", "bug"]):
-        action = "reply"
+    if category == "support" and any(marker in text for marker in ["404 error", "checkout bug", "bug", "trial issue", "login issue"]):
+        if any(marker in text for marker in ["checkout bug", "down", "blocked", "affecting everyone", "multiple teams"]):
+            action = "escalate"
     if category == "sales" and any(marker in text for marker in ["500 seats", "enterprise", "proposal", "rollout"]):
         priority = "high"
     if category == "billing" and any(marker in text for marker in ["invoice", "vat", "tax", "today", "urgent"]):
-        priority = "high" if any(marker in text for marker in ["today", "urgent", "asap", "charged twice", "refund"]) else priority
+        priority = "high" if any(marker in text for marker in ["today", "urgent", "asap", "charged twice", "duplicate", "incorrect billing"]) else priority
     if category == "spam":
         priority = "low"
         department = "ignore"
@@ -215,9 +320,6 @@ def _openai_predict(email: EmailExample) -> EmailAction | None:
 
 
 def predict_action(email: EmailExample) -> EmailAction:
-    predicted = _openai_predict(email)
-    if predicted is not None:
-        return predicted
     return _predict_action(email)
 
 
