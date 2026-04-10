@@ -1,18 +1,10 @@
 from __future__ import annotations
 
-import json
-import os
 import re
 from typing import Any
 
-from .grader import grade_action
 from .models import BaselineScores, EmailAction, EmailExample
 from .server.environment import EmailTriageEnvironment
-
-try:
-    from openai import OpenAI
-except Exception:  # pragma: no cover - optional dependency
-    OpenAI = None  # type: ignore[assignment]
 
 
 IMPORTANT_CATEGORY_KEYWORDS = {
@@ -106,21 +98,6 @@ BILLING_MARKERS = [
 def _score_keyword_hits(text: str, keywords: list[str]) -> int:
     lower = text.lower()
     return sum(1 for keyword in keywords if keyword in lower)
-
-
-def _warmup_proxy(client: OpenAI, model: str) -> None:
-    try:
-        client.chat.completions.create(
-            model=model,
-            temperature=0,
-            max_tokens=1,
-            messages=[
-                {"role": "system", "content": "Reply with OK."},
-                {"role": "user", "content": "OK"},
-            ],
-        )
-    except Exception:
-        pass
 
 
 def _normalize_text(email: EmailExample) -> str:
@@ -277,63 +254,19 @@ def _predict_action(email: EmailExample) -> EmailAction:
     return EmailAction(category=category, priority=priority, department=department, action=action, use_tool=tool_name, tool_input=tool_input)
 
 
-def _openai_predict(email: EmailExample) -> EmailAction | None:
-    if OpenAI is None:
-        return None
-    if not os.getenv("API_BASE_URL") or not os.getenv("API_KEY"):
-        return None
-
-    prompt = {
-        "email_id": email.email_id,
-        "subject": email.subject,
-        "sender": email.sender,
-        "email_text": email.email_text,
-        "allowed_categories": ["spam", "support", "billing", "sales", "internal"],
-        "allowed_priorities": ["low", "medium", "high"],
-        "allowed_departments": ["support_team", "sales_team", "finance", "ignore"],
-        "allowed_actions": ["reply", "forward", "archive", "escalate"],
-    }
-
-    try:
-        client = OpenAI(base_url=os.environ["API_BASE_URL"], api_key=os.environ["API_KEY"])
-        model = os.getenv("MODEL_NAME", "gpt-4o-mini")
-        response = client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": "You are an enterprise email triage agent. Return only minified JSON."},
-                {
-                    "role": "user",
-                    "content": (
-                        "Classify the email for triage. Return JSON with keys category, priority, department, action.\n"
-                        + json.dumps(prompt)
-                    ),
-                },
-            ],
-            temperature=0,
-        )
-        text = response.choices[0].message.content or ""
-        text = text.strip()
-        parsed = json.loads(text)
-        return EmailAction(**parsed)
-    except Exception:
-        return None
-
-
 def predict_action(email: EmailExample) -> EmailAction:
     return _predict_action(email)
 
 
 def run_baseline() -> BaselineScores:
     env = EmailTriageEnvironment()
-    if OpenAI is not None and os.getenv("API_BASE_URL") and os.getenv("API_KEY"):
-        _warmup_proxy(OpenAI(base_url=os.environ["API_BASE_URL"], api_key=os.environ["API_KEY"]), os.getenv("MODEL_NAME", "gpt-4o-mini"))
-
     def score_fn(email: EmailExample, task_id: int) -> float:
         predicted = predict_action(email)
-        return grade_action(predicted, email_data=email, task_id=task_id)
+        score, _ = env.grade(predicted, email_data=email, task_id=task_id)
+        return score
 
     scores = env.baseline_scores(score_fn)
-    scores.mode = "openai" if OpenAI is not None and os.getenv("API_BASE_URL") and os.getenv("API_KEY") else "heuristic"
+    scores.mode = "heuristic"
     return scores
 
 

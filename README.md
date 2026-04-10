@@ -23,6 +23,11 @@ Unlike standard classification benchmarks, agents must reason about intent prior
 - A self-contained smoke test that exercises the FastAPI app directly
 - A root-level Dockerfile in the GitHub repo for easier deployment
 
+## Validation
+
+- Run `python validate.py` for a one-command local check.
+- Run `python -m unittest discover -s tests` to execute the automated smoke tests.
+
 ## System Architecture
 
 ```text
