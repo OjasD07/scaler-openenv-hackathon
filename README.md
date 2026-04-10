@@ -270,9 +270,9 @@ The script emits structured stdout in the required format:
 Current deterministic heuristic scores:
 
 - Task 1: `0.950`
-- Task 2: `0.931`
-- Task 3: `0.936`
-- Average: `0.939`
+- Task 2: `0.950`
+- Task 3: `0.950`
+- Average: `0.950`
 
 Run it locally:
 

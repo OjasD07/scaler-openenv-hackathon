@@ -17,4 +17,4 @@ dependencies = [
 ]
 
 [project.scripts]
-server = "server.app:main"
+server = "email_triage_env.server.app:main"

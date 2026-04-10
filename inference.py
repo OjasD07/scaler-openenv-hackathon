@@ -49,15 +49,15 @@ def _require_env(name: str) -> str:
 
 
 def _resolve_api_key() -> str:
-    value = os.getenv("API_KEY") or os.getenv("HF_TOKEN")
+    value = os.getenv("API_KEY") or os.getenv("HF_TOKEN") or os.getenv("OPENAI_API_KEY")
     if not value:
-        raise RuntimeError("Missing required environment variable: API_KEY or HF_TOKEN")
+        raise RuntimeError("Missing required environment variable: API_KEY, HF_TOKEN, or OPENAI_API_KEY")
     return value
 
 
 def _build_proxy_client() -> OpenAI | None:
     api_base_url = os.getenv("API_BASE_URL")
-    api_key = os.getenv("API_KEY") or os.getenv("HF_TOKEN")
+    api_key = os.getenv("API_KEY") or os.getenv("HF_TOKEN") or os.getenv("OPENAI_API_KEY")
     if not api_base_url or not api_key:
         return None
     return OpenAI(
@@ -132,6 +132,11 @@ def _predict_action(client: OpenAI | None, model_name: str, task_id: int, observ
 
     prompt = {
         "task_id": task_id,
+        "objective": (
+            "Choose the best email triage action. Spam should be archived, billing routes to finance, "
+            "support routes to support_team, sales routes to sales_team, and internal work routes to ignore. "
+            "High priority is reserved for blocked, urgent, down, duplicate-charge, or same-day operational risk."
+        ),
         "current_email": {
             "email_id": email.get("email_id"),
             "sender": email.get("sender"),
@@ -148,6 +153,7 @@ def _predict_action(client: OpenAI | None, model_name: str, task_id: int, observ
             "department": ["support_team", "sales_team", "finance", "ignore"],
             "action": ["reply", "forward", "archive", "escalate"],
         },
+        "heuristic_action": heuristic.model_dump(exclude_none=True),
     }
 
     try:
@@ -160,7 +166,8 @@ def _predict_action(client: OpenAI | None, model_name: str, task_id: int, observ
                     "content": (
                         "You are an OpenEnv email triage policy. "
                         "Return only minified JSON with keys category, priority, department, action, use_tool, tool_input. "
-                        "Use null for optional fields when not needed."
+                        "Use null for optional fields when not needed. "
+                        "If the heuristic_action is already correct, return it unchanged."
                     ),
                 },
                 {
@@ -174,11 +181,10 @@ def _predict_action(client: OpenAI | None, model_name: str, task_id: int, observ
             ],
         )
         content = response.choices[0].message.content or ""
-        _ = _extract_json(content)
+        model_payload = _extract_json(content)
+        return EmailAction.model_validate({**heuristic.model_dump(), **model_payload})
     except Exception:
-        pass
-
-    return heuristic
+        return heuristic
 
 
 def _reset_episode(session: requests.Session, base_url: str, task_id: int) -> dict[str, Any]:

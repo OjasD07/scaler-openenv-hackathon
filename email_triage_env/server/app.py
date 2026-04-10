@@ -4,6 +4,7 @@ import logging
 import os
 from typing import Any
 
+import uvicorn
 from fastapi import Body, FastAPI, HTTPException
 
 from ..baseline import run_baseline
@@ -163,3 +164,11 @@ def episode_log() -> dict[str, Any]:
 def sample_action() -> dict[str, Any]:
     env.ensure_initialized()
     return env.sample_action()
+
+
+def main() -> None:
+    uvicorn.run(
+        "email_triage_env.server.app:app",
+        host=os.getenv("HOST", "0.0.0.0"),
+        port=int(os.getenv("PORT", "7860")),
+    )

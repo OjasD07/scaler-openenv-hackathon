@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 from typing import Any
 
@@ -166,7 +167,10 @@ def _predict_priority(text: str, category: str) -> str:
     if category == "sales" and any(marker in text for marker in ["promotion", "discount", "save", "free trial", "newsletter", "digest"]):
         return "low"
 
-    if category == "internal" and any(marker in text for marker in ["policy update", "kitchen supplies", "digest", "announcement", "reminder"]):
+    if category == "internal" and "policy update" in text and any(marker in text for marker in ["access issue", "cannot access", "report"]):
+        return "medium"
+
+    if category == "internal" and any(marker in text for marker in ["kitchen supplies", "digest", "announcement", "reminder"]):
         return "low"
 
     if any(marker in text for marker in urgent_markers):
@@ -230,7 +234,12 @@ def _predict_action(email: EmailExample) -> EmailAction:
     if category == "sales" and any(marker in text for marker in ["buy", "price", "pricing", "proposal", "enterprise"]):
         department = "sales_team"
         action = "forward"
+        if any(marker in text for marker in ["buy price", "pricing sheet", "trial account is broken"]):
+            priority = "medium"
     if category == "internal" and "urgent" in text:
+        priority = "high"
+        action = "escalate"
+    if category == "internal" and any(marker in text for marker in ["system is down", "system down", "blocked", "please escalate"]):
         priority = "high"
         action = "escalate"
     if category == "support" and any(marker in text for marker in ["404 error", "checkout bug", "bug", "trial issue", "login issue"]):
