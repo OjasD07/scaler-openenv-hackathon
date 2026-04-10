@@ -1,13 +1,11 @@
 from __future__ import annotations
 
 import random
-import sys
 from typing import Any
 
-import requests
+from fastapi.testclient import TestClient
 
-
-BASE_URL = "http://127.0.0.1:8000"
+from email_triage_env.server.app import app
 
 
 def random_action(rng: random.Random) -> dict[str, Any]:
@@ -21,10 +19,10 @@ def random_action(rng: random.Random) -> dict[str, Any]:
 
 def main() -> int:
     rng = random.Random(7)
-    session = requests.Session()
+    client = TestClient(app)
 
-    reset_response = session.post(f"{BASE_URL}/reset", json={}, timeout=30)
-    reset_response.raise_for_status()
+    reset_response = client.post("/reset", json={})
+    assert reset_response.status_code == 200, reset_response.text
     observation = reset_response.json()["observation"]
     print(f"reset -> {observation['current_email']['email_id']}")
 
@@ -32,8 +30,8 @@ def main() -> int:
     done = False
     steps = 0
     while not done and steps < 20:
-        response = session.post(f"{BASE_URL}/step", json={"action": random_action(rng)}, timeout=30)
-        response.raise_for_status()
+        response = client.post("/step", json={"action": random_action(rng)})
+        assert response.status_code == 200, response.text
         payload = response.json()
         reward = float(payload["reward"])
         rewards.append(reward)
@@ -41,6 +39,10 @@ def main() -> int:
         steps += 1
         print(f"step {steps}: reward={reward}")
 
+    manifest = client.get("/manifest")
+    assert manifest.status_code == 200, manifest.text
+    manifest_payload = manifest.json()
+    print(f"manifest -> task_count={manifest_payload['task_count']}, tools={manifest_payload['supported_tools']}")
     print(f"done={done}, steps={steps}, rewards={rewards}")
     return 0 if done else 1
 

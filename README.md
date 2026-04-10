@@ -16,6 +16,13 @@ This environment is intentionally designed to challenge modern LLM agents by int
 
 Unlike standard classification benchmarks, agents must reason about intent priority, urgency, and downstream consequences across an episode.
 
+## What’s Stronger In This Revision
+
+- A self-describing `/manifest` endpoint for tooling and reviewers
+- Richer `/tasks` metadata, including supported tools and dataset summaries
+- A self-contained smoke test that exercises the FastAPI app directly
+- A root-level Dockerfile in the GitHub repo for easier deployment
+
 ## System Architecture
 
 ```text

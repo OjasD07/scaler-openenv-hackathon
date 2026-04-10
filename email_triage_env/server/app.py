@@ -8,7 +8,7 @@ from fastapi import Body, FastAPI, HTTPException
 
 from ..baseline import run_baseline
 from ..models import EmailAction, GradeRequest, ResetRequest
-from ..tasks import TASKS, get_email_by_id
+from ..tasks import get_email_by_id
 from .environment import EmailTriageEnvironment
 
 logging.basicConfig(
@@ -16,7 +16,7 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s %(message)s",
 )
 
-app = FastAPI(title="OpenEnv Email Triage Environment", version="2.1.0")
+app = FastAPI(title="OpenEnv Email Triage Environment", version="2.2.0")
 env = EmailTriageEnvironment()
 SCORE_FLOOR = 0.001
 SCORE_CEILING = 0.999
@@ -64,23 +64,20 @@ def health() -> dict[str, Any]:
         "status": "ok",
         "ready": True,
         "dataset_size": len(env.dataset),
+        "task_count": len(env.tasks()),
+        "supported_tools": env.manifest()["supported_tools"],
+        "version": app.version,
     }
 
 
 @app.get("/tasks")
-def list_tasks() -> list[dict[str, Any]]:
-    return [
-        {
-            "name": task.name,
-            "difficulty": task.level,
-            "description": task.description,
-            "action_schema": {
-                "fields": list(task.required_fields),
-                "required_fields": list(task.required_fields),
-            },
-        }
-        for task in TASKS
-    ]
+def list_tasks() -> dict[str, Any]:
+    return env.tasks_payload()
+
+
+@app.get("/manifest")
+def manifest() -> dict[str, Any]:
+    return env.manifest()
 
 
 @app.post("/reset")

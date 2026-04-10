@@ -401,11 +401,45 @@ class EmailTriageEnvironment:
     def tasks_payload(self) -> dict[str, Any]:
         summary = self._dataset_summary()
         return {
+            "task_count": len(TASKS),
             "tasks": self.tasks(),
+            "supported_tools": list(AVAILABLE_TOOLS),
+            "action_schema": {
+                "category": ["spam", "support", "billing", "sales", "internal"],
+                "priority": ["low", "medium", "high"],
+                "department": ["support_team", "sales_team", "finance", "ignore"],
+                "action": ["reply", "forward", "archive", "escalate"],
+                "tool": list(AVAILABLE_TOOLS),
+            },
             "email_ids": summary["email_ids"],
             "sample_email": summary["sample_email"],
             "sample_emails": summary["sample_emails"],
             "difficulty_distribution": summary["difficulty_distribution"],
+            "dataset_summary": summary,
+        }
+
+    def manifest(self) -> dict[str, Any]:
+        summary = self._dataset_summary()
+        return {
+            "name": "email_triage_env",
+            "version": "2.2.0",
+            "description": "Deterministic OpenEnv-style email triage environment",
+            "task_count": len(TASKS),
+            "supported_tools": list(AVAILABLE_TOOLS),
+            "api_endpoints": [
+                "/",
+                "/health",
+                "/tasks",
+                "/manifest",
+                "/reset",
+                "/step",
+                "/state",
+                "/grader",
+                "/baseline",
+                "/episode_log",
+                "/sample_action",
+            ],
+            "tasks": self.tasks(),
             "dataset_summary": summary,
         }
 
