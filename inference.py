@@ -17,10 +17,11 @@ from email_triage_env.server.app import app
 
 TASKS = (1, 2, 3)
 TASK_NAMES = {1: "easy", 2: "medium", 3: "hard"}
-MODEL_NAME = os.getenv("MODEL_NAME", "gpt-4.1-mini")
+API_BASE_URL = os.getenv("API_BASE_URL", "http://127.0.0.1:8000/v1")
+MODEL_NAME = os.getenv("MODEL_NAME", "gpt-4o-mini")
 HF_TOKEN = os.getenv("HF_TOKEN")
-ENV_BASE_URL = os.getenv("ENV_BASE_URL", "http://127.0.0.1:8000")
 LOCAL_IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME")
+ENV_BASE_URL = os.getenv("ENV_BASE_URL", "http://127.0.0.1:8000")
 BENCHMARK = os.getenv("BENCHMARK", "email-triage-env")
 SEED = 7
 REQUEST_TIMEOUT = 30
@@ -56,12 +57,17 @@ def _resolve_api_key() -> str:
 
 
 def _build_proxy_client() -> OpenAI | None:
-    api_base_url = os.getenv("API_BASE_URL")
-    api_key = os.getenv("API_KEY") or os.getenv("HF_TOKEN") or os.getenv("OPENAI_API_KEY")
-    if not api_base_url or not api_key:
+    if "API_BASE_URL" in os.environ and "API_KEY" in os.environ:
+        return OpenAI(
+            base_url=os.environ["API_BASE_URL"],
+            api_key=os.environ["API_KEY"],
+        )
+
+    api_key = os.getenv("API_KEY") or HF_TOKEN or os.getenv("OPENAI_API_KEY")
+    if not API_BASE_URL or not api_key:
         return None
     return OpenAI(
-        base_url=api_base_url,
+        base_url=API_BASE_URL,
         api_key=api_key,
     )
 
@@ -156,35 +162,32 @@ def _predict_action(client: OpenAI | None, model_name: str, task_id: int, observ
         "heuristic_action": heuristic.model_dump(exclude_none=True),
     }
 
-    try:
-        response = client.chat.completions.create(
-            model=model_name,
-            temperature=0,
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You are an OpenEnv email triage policy. "
-                        "Return only minified JSON with keys category, priority, department, action, use_tool, tool_input. "
-                        "Use null for optional fields when not needed. "
-                        "If the heuristic_action is already correct, return it unchanged."
-                    ),
-                },
-                {
-                    "role": "user",
-                    "content": (
-                        "Validate the structured triage action for the email below.\n"
-                        "If your answer is uncertain, prefer the provided heuristic action.\n"
-                        f"{json.dumps(prompt, separators=(',', ':'))}"
-                    ),
-                },
-            ],
-        )
-        content = response.choices[0].message.content or ""
-        model_payload = _extract_json(content)
-        return EmailAction.model_validate({**heuristic.model_dump(), **model_payload})
-    except Exception:
-        return heuristic
+    response = client.chat.completions.create(
+        model=model_name,
+        temperature=0,
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "You are an OpenEnv email triage policy. "
+                    "Return only minified JSON with keys category, priority, department, action, use_tool, tool_input. "
+                    "Use null for optional fields when not needed. "
+                    "If the heuristic_action is already correct, return it unchanged."
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    "Validate the structured triage action for the email below.\n"
+                    "If your answer is uncertain, prefer the provided heuristic action.\n"
+                    f"{json.dumps(prompt, separators=(',', ':'))}"
+                ),
+            },
+        ],
+    )
+    content = response.choices[0].message.content or ""
+    model_payload = _extract_json(content)
+    return EmailAction.model_validate({**heuristic.model_dump(), **model_payload})
 
 
 def _reset_episode(session: requests.Session, base_url: str, task_id: int) -> dict[str, Any]:
