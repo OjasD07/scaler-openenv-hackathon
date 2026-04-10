@@ -10,7 +10,7 @@ Department = Literal["support_team", "sales_team", "finance", "ignore"]
 ActionType = Literal["reply", "forward", "archive", "escalate"]
 
 
-class EmailExample(BaseModel):
+class PublicEmail(BaseModel):
     email_id: str
     email_text: str
     sender: str
@@ -19,6 +19,9 @@ class EmailExample(BaseModel):
     noisy_text: Optional[str] = None
     thread_id: Optional[str] = None
     tags: list[str] = Field(default_factory=list)
+
+
+class EmailExample(PublicEmail):
     category: Category
     priority: Priority
     department: Department
@@ -26,7 +29,7 @@ class EmailExample(BaseModel):
 
 
 class EmailObservation(BaseModel):
-    current_email: EmailExample
+    current_email: PublicEmail
     inbox_summary: list[str] = Field(default_factory=list)
     remaining_emails: int = 0
     history: list[str] = Field(default_factory=list)
@@ -44,14 +47,10 @@ class EmailAction(BaseModel):
 
 
 class EnvironmentState(BaseModel):
-    inbox: list[EmailExample]
+    inbox: list[PublicEmail]
     current_email_index: int
     processed: list[bool]
-    target_category: Category
-    target_priority: Priority
-    target_department: Department
-    target_action: ActionType
-    email_data: EmailExample
+    email_data: PublicEmail
     step_count: int = 0
     task_id: int = 3
     episode_history: list[dict[str, Any]] = Field(default_factory=list)

@@ -22,6 +22,7 @@ Unlike standard classification benchmarks, agents must reason about intent prior
 - Richer `/tasks` metadata, including supported tools and dataset summaries
 - A self-contained smoke test that exercises the FastAPI app directly
 - A root-level Dockerfile in the GitHub repo for easier deployment
+- Public observations and state now hide ground-truth labels to reduce trivial benchmark exploits
 
 ## Validation
 
@@ -35,7 +36,7 @@ FastAPI Server
    |
    +--> /reset  -> load deterministic inbox episode
    +--> /step   -> score one email, advance to next
-   +--> /state  -> inspect internal episode state
+   +--> /state  -> inspect public episode state
    +--> /tasks  -> task metadata + dataset summary
    +--> /grader -> deterministic grading API
    +--> /episode_log -> full trajectory inspection
@@ -125,25 +126,34 @@ Allowed values:
 - `action`: `reply`, `forward`, `archive`, `escalate`
 - `use_tool`: `lookup_order`, `check_payment`, `get_user_history`
 
-## Internal State Schema
+## Public State Schema
 
 ```json
 {
-  "inbox": ["..."],
+  "inbox": [
+    {
+      "email_id": "em-001",
+      "subject": "Charged twice for order 88412",
+      "sender": "billing@shopnova.com",
+      "email_text": "I was charged twice for my order 88412...",
+      "difficulty": "easy"
+    }
+  ],
   "current_email_index": 0,
   "processed": [false, false, false],
-  "target_category": "billing",
-  "target_priority": "high",
-  "target_department": "finance",
-  "target_action": "reply",
-  "email_data": { "...": "..." },
+  "email_data": {
+    "email_id": "em-001",
+    "subject": "Charged twice for order 88412",
+    "sender": "billing@shopnova.com",
+    "email_text": "I was charged twice for my order 88412...",
+    "difficulty": "easy"
+  },
   "step_count": 1,
   "task_id": 3,
   "episode_history": [
     {
       "email": { "...": "..." },
       "agent_action": { "...": "..." },
-      "correct_action": { "...": "..." },
       "reward": 0.95
     }
   ],
@@ -174,7 +184,7 @@ Reward is dense, deterministic, and shaped for realistic triage behavior.
 | Urgent email with wrong priority | `-0.4` |
 | Spam marked as important | `-0.3` |
 | Important email marked as spam | `-0.5` |
-| Time cost | `-0.05 * step_count` |
+| Time cost | `-0.01 * step_count` |
 | Optional tool bonus | small deterministic bonus when a tool is used appropriately |
 
 Final reward is clamped to `[0.0, 1.0]`.
@@ -190,7 +200,7 @@ Final reward is clamped to `[0.0, 1.0]`.
 
 ## Synthetic Dataset
 
-The dataset contains 38 deterministic synthetic emails with:
+The dataset contains 42 deterministic synthetic emails with:
 
 - clear support, billing, sales, spam, and internal cases
 - 8+ ambiguous examples
@@ -249,12 +259,14 @@ That makes it much closer to a production triage assistant than a standard text 
 
 ## Submission Runner
 
-`inference.py` is the root-level submission script. It uses the same deterministic policy and optionally warms the injected OpenAI-compatible proxy when credentials are available. If `ENV_BASE_URL` is not reachable, it falls back to the local FastAPI app so the baseline can still reproduce.
+`inference.py` is the root-level submission script. It uses the deterministic policy as a fallback and calls the injected OpenAI-compatible proxy when credentials are available. If `ENV_BASE_URL` is not reachable, it falls back to the local FastAPI app so the baseline can still reproduce.
 
 Optional environment variables:
 
 - `API_BASE_URL`
 - `API_KEY`
+- `HF_TOKEN`
+- `OPENAI_API_KEY`
 - `MODEL_NAME`
 - `ENV_BASE_URL` only if your local environment server is not on `http://127.0.0.1:8000`
 - `LOCAL_IMAGE_NAME` only if you use `from_docker_image()`
@@ -269,10 +281,10 @@ The script emits structured stdout in the required format:
 
 Current deterministic heuristic scores:
 
-- Task 1: `0.950`
-- Task 2: `0.950`
-- Task 3: `0.950`
-- Average: `0.950`
+- Task 1: `0.990`
+- Task 2: `0.990`
+- Task 3: `0.990`
+- Average: `0.990`
 
 Run it locally:
 
@@ -295,7 +307,7 @@ uvicorn email_triage_env.server.app:app --reload --host 0.0.0.0 --port 8000
 - `GET /tasks`
 - `POST /grader`
 - `GET /episode_log`
-- `GET /sample_action`
+- `GET /sample_action` returns a schema-compatible example action, not the ground-truth answer
 - `GET /health`
 - `GET /baseline`
 
@@ -319,7 +331,7 @@ python test_env.py
 Build and run from the repository root:
 
 ```bash
-docker build -f server/Dockerfile -t email-triage-env .
+docker build -t email-triage-env .
 docker run -p 7860:7860 email-triage-env
 ```
 

@@ -11,7 +11,7 @@ from openai import OpenAI
 from pydantic import ValidationError
 
 from email_triage_env.baseline import predict_action as heuristic_predict_action
-from email_triage_env.models import EmailAction, EmailExample
+from email_triage_env.models import EmailAction, PublicEmail
 from email_triage_env.server.app import app
 
 
@@ -123,7 +123,7 @@ def _extract_json(text: str) -> dict[str, Any]:
 def _predict_action(client: OpenAI | None, model_name: str, task_id: int, observation: dict[str, Any]) -> EmailAction:
     email = observation["current_email"]
     try:
-        heuristic = heuristic_predict_action(EmailExample.model_validate(email))
+        heuristic = heuristic_predict_action(PublicEmail.model_validate(email))
     except ValidationError as exc:
         raise RuntimeError(f"Invalid email payload for task {task_id}") from exc
 

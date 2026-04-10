@@ -120,17 +120,18 @@ def grader(request: GradeRequest) -> dict[str, Any]:
         elif request.email_id is not None:
             email_data = get_email_by_id(request.email_id)
         else:
-            email_data = env.state().email_data
+            email_data = None
 
         task_id = request.task_id or env.state().task_id
         score, breakdown = env.grade(request.action, email_data=email_data, task_id=task_id)
+        email_id = email_data.email_id if email_data is not None else env.state().email_data.email_id
         score = _strict_score(float(score))
         return {
             "score": score,
             "details": {
                 "breakdown": breakdown,
                 "task_id": task_id,
-                "email_id": email_data.email_id,
+                "email_id": email_id,
             },
         }
     except ValueError as exc:

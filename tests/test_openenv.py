@@ -21,6 +21,8 @@ class OpenEnvSmokeTest(unittest.TestCase):
         self.assertEqual(manifest["task_count"], 3)
         self.assertEqual(manifest["supported_tools"], ["lookup_order", "check_payment", "get_user_history"])
         self.assertEqual(manifest["dataset_summary"]["dataset_size"], len(DATASET))
+        label_fields = {"category", "priority", "department", "action"}
+        self.assertTrue(label_fields.isdisjoint(manifest["dataset_summary"]["sample_email"]))
 
         tasks_response = self.client.get("/tasks")
         self.assertEqual(tasks_response.status_code, 200)
@@ -35,6 +37,9 @@ class OpenEnvSmokeTest(unittest.TestCase):
         observation = payload["observation"]
         self.assertIn("current_email", observation)
         self.assertGreaterEqual(observation["remaining_emails"], 1)
+        label_fields = {"category", "priority", "department", "action"}
+        self.assertTrue(label_fields.isdisjoint(observation["current_email"]))
+        self.assertTrue(label_fields.isdisjoint(payload["state"]["email_data"]))
 
         action = {
             "category": "spam",
@@ -47,6 +52,8 @@ class OpenEnvSmokeTest(unittest.TestCase):
         step_payload = step_response.json()
         self.assertIn("reward", step_payload)
         self.assertIn("observation", step_payload)
+        self.assertTrue(label_fields.isdisjoint(step_payload["observation"]["current_email"]))
+        self.assertTrue(label_fields.isdisjoint(step_payload["state"]["email_data"]))
 
     def test_baseline_quality(self) -> None:
         scores = run_baseline()

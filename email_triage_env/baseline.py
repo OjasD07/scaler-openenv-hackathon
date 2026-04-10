@@ -4,7 +4,7 @@ import json
 import re
 from typing import Any
 
-from .models import BaselineScores, EmailAction, EmailExample
+from .models import BaselineScores, EmailAction, EmailExample, PublicEmail
 from .server.environment import EmailTriageEnvironment
 
 
@@ -101,7 +101,7 @@ def _score_keyword_hits(text: str, keywords: list[str]) -> int:
     return sum(1 for keyword in keywords if keyword in lower)
 
 
-def _normalize_text(email: EmailExample) -> str:
+def _normalize_text(email: PublicEmail) -> str:
     text = f"{email.sender} {email.subject} {email.email_text} {email.noisy_text or ''}".lower()
     return re.sub(r"\s+", " ", text).strip()
 
@@ -184,7 +184,7 @@ def _predict_priority(text: str, category: str) -> str:
     return "medium" if category in {"billing", "support", "sales", "internal"} else "low"
 
 
-def _predict_action(email: EmailExample) -> EmailAction:
+def _predict_action(email: PublicEmail) -> EmailAction:
     text = _normalize_text(email)
     category = _classify_category(text)
     priority = _predict_priority(text, category)
@@ -263,7 +263,7 @@ def _predict_action(email: EmailExample) -> EmailAction:
     return EmailAction(category=category, priority=priority, department=department, action=action, use_tool=tool_name, tool_input=tool_input)
 
 
-def predict_action(email: EmailExample) -> EmailAction:
+def predict_action(email: PublicEmail) -> EmailAction:
     return _predict_action(email)
 
 

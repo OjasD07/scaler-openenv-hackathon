@@ -12,6 +12,7 @@ from ..models import (
     EmailObservation,
     EnvironmentState,
     GraderBreakdown,
+    PublicEmail,
     StepResponse,
 )
 from ..tasks import DATASET, TASKS, get_email_by_id, get_task_definition
@@ -107,6 +108,20 @@ class EmailTriageEnvironment:
         index = min(self._runtime.current_email_index, len(self._runtime.inbox) - 1)
         return self._runtime.inbox[index]
 
+    def _public_email(self, email: EmailExample) -> PublicEmail:
+        return PublicEmail.model_validate(email.model_dump())
+
+    def _public_episode_history(self) -> list[dict[str, Any]]:
+        history: list[dict[str, Any]] = []
+        for entry in self._runtime.episode_history:
+            public_entry = dict(entry)
+            email_payload = public_entry.get("email")
+            if isinstance(email_payload, dict):
+                public_entry["email"] = PublicEmail.model_validate(email_payload).model_dump()
+            public_entry.pop("correct_action", None)
+            history.append(public_entry)
+        return history
+
     def _summary_for_email(self, email: EmailExample) -> str:
         thread_suffix = f" [{email.thread_id}]" if email.thread_id else ""
         return f"{email.email_id}: {email.subject[:48]}{thread_suffix}"
@@ -121,18 +136,19 @@ class EmailTriageEnvironment:
         return {
             "dataset_size": len(self.dataset),
             "email_ids": [email.email_id for email in self.dataset],
-            "sample_email": self.dataset[0].model_dump(),
-            "sample_emails": [email.model_dump() for email in self.dataset[:3]],
+            "sample_email": self._public_email(self.dataset[0]).model_dump(),
+            "sample_emails": [self._public_email(email).model_dump() for email in self.dataset[:3]],
             "difficulty_counts": difficulty_counts,
             "difficulty_distribution": difficulty_counts,
             "thread_group_counts": thread_groups,
+            "hidden_label_fields": ["category", "priority", "department", "action"],
         }
 
     def _observation(self) -> EmailObservation:
         email = self._current_email()
         self._runtime.history = self._runtime.history or []
         return EmailObservation(
-            current_email=email,
+            current_email=self._public_email(email),
             inbox_summary=[self._summary_for_email(item) for item in self._runtime.inbox],
             remaining_emails=sum(1 for processed in self._runtime.processed if not processed),
             history=list(self._runtime.history),
@@ -143,17 +159,13 @@ class EmailTriageEnvironment:
     def _state(self) -> EnvironmentState:
         email = self._current_email()
         return EnvironmentState(
-            inbox=list(self._runtime.inbox),
+            inbox=[self._public_email(item) for item in self._runtime.inbox],
             current_email_index=self._runtime.current_email_index,
             processed=list(self._runtime.processed),
-            target_category=email.category,
-            target_priority=email.priority,
-            target_department=email.department,
-            target_action=email.action,
-            email_data=email,
+            email_data=self._public_email(email),
             step_count=self._runtime.step_count,
             task_id=self._runtime.task_id,
-            episode_history=list(self._runtime.episode_history),
+            episode_history=self._public_episode_history(),
             available_tools=list(AVAILABLE_TOOLS),
             pending_tool_result=self._runtime.pending_tool_result,
         )
@@ -271,7 +283,7 @@ class EmailTriageEnvironment:
                 breakdown.action = 1
 
         score += self._severity_penalty(email, action, breakdown, task_id)
-        score -= 0.05 * self._runtime.step_count
+        score -= 0.01 * self._runtime.step_count
 
         if self._runtime.pending_tool_result is not None and action.use_tool is not None:
             score += 0.05
@@ -387,7 +399,7 @@ class EmailTriageEnvironment:
             "task_id": self._runtime.task_id,
             "email_id": current_email.email_id,
             "breakdown": breakdown,
-            "episode_history": list(self._runtime.episode_history),
+            "episode_history": self._public_episode_history(),
             "tool_result": tool_result,
         }
         return StepResponse(observation=observation, reward=reward, done=self._runtime.done, info=info, state=self._state())
@@ -450,7 +462,7 @@ class EmailTriageEnvironment:
             "step_count": self._runtime.step_count,
             "current_email_index": self._runtime.current_email_index,
             "processed": list(self._runtime.processed),
-            "episode_history": list(self._runtime.episode_history),
+            "episode_history": self._public_episode_history(),
             "history": list(self._runtime.history),
             "pending_tool_result": self._runtime.pending_tool_result,
         }
@@ -475,14 +487,14 @@ class EmailTriageEnvironment:
             self._runtime = original
 
     def sample_action(self) -> dict[str, Any]:
-        email = self._current_email() if self._runtime.inbox else self.dataset[0]
-        action = {
-            "category": email.category,
-            "priority": email.priority,
-            "department": email.department,
-            "action": email.action,
+        return {
+            "category": "support",
+            "priority": "medium",
+            "department": "support_team",
+            "action": "reply",
+            "use_tool": None,
+            "tool_input": None,
         }
-        return action
 
     def baseline_scores(self, score_fn) -> BaselineScores:
         task_scores: dict[int, list[float]] = {1: [], 2: [], 3: []}
