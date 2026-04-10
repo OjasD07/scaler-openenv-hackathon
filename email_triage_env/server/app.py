@@ -21,6 +21,7 @@ app = FastAPI(title="OpenEnv Email Triage Environment", version="2.2.0")
 env = EmailTriageEnvironment()
 SCORE_FLOOR = 0.001
 SCORE_CEILING = 0.999
+DEBUG_GRADER = os.getenv("EMAIL_TRIAGE_DEBUG_GRADER", "").lower() in {"1", "true", "yes"}
 DEFAULT_STEP_ACTION: dict[str, Any] = {
     "category": "support",
     "priority": "medium",
@@ -52,6 +53,19 @@ def _strict_score(value: float) -> float:
     if score >= SCORE_CEILING:
         return SCORE_CEILING
     return score
+
+
+def _grader_details(task_id: int, email_id: str, breakdown: dict[str, Any]) -> dict[str, Any]:
+    details: dict[str, Any] = {
+        "task_id": task_id,
+        "email_id": email_id,
+        "grader": "deterministic",
+        "component_feedback": "hidden",
+    }
+    if DEBUG_GRADER:
+        details["breakdown"] = breakdown
+        details["component_feedback"] = "debug"
+    return details
 
 
 @app.get("/")
@@ -128,11 +142,7 @@ def grader(request: GradeRequest) -> dict[str, Any]:
         score = _strict_score(float(score))
         return {
             "score": score,
-            "details": {
-                "breakdown": breakdown,
-                "task_id": task_id,
-                "email_id": email_id,
-            },
+            "details": _grader_details(task_id, email_id, breakdown),
         }
     except ValueError as exc:
         return {

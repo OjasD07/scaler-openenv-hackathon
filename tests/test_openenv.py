@@ -62,6 +62,27 @@ class OpenEnvSmokeTest(unittest.TestCase):
         self.assertGreaterEqual(scores.task_3, 0.9)
         self.assertGreaterEqual(scores.average, 0.9)
 
+    def test_grader_hides_component_feedback_by_default(self) -> None:
+        self.client.post("/reset", json={"task_id": 3, "email_id": "em-001"})
+        response = self.client.post(
+            "/grader",
+            json={
+                "task_id": 3,
+                "email_id": "em-001",
+                "action": {
+                    "category": "billing",
+                    "priority": "high",
+                    "department": "finance",
+                    "action": "reply",
+                },
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertIn("score", payload)
+        self.assertNotIn("breakdown", payload["details"])
+        self.assertEqual(payload["details"]["component_feedback"], "hidden")
+
 
 if __name__ == "__main__":
     unittest.main()

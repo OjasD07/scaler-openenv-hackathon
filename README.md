@@ -23,6 +23,7 @@ Unlike standard classification benchmarks, agents must reason about intent prior
 - A self-contained smoke test that exercises the FastAPI app directly
 - A root-level Dockerfile in the GitHub repo for easier deployment
 - Public observations and state now hide ground-truth labels to reduce trivial benchmark exploits
+- The public grader returns deterministic scores without field-level answer feedback by default
 
 ## Validation
 
@@ -305,11 +306,13 @@ uvicorn email_triage_env.server.app:app --reload --host 0.0.0.0 --port 8000
 - `POST /step`
 - `GET /state`
 - `GET /tasks`
-- `POST /grader`
+- `POST /grader` returns score-only deterministic grading metadata by default
 - `GET /episode_log`
 - `GET /sample_action` returns a schema-compatible example action, not the ground-truth answer
 - `GET /health`
 - `GET /baseline`
+
+Set `EMAIL_TRIAGE_DEBUG_GRADER=1` during local development to include component-level grader breakdowns in `/grader` responses.
 
 ### Reset Behavior
 
