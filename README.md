@@ -345,4 +345,5 @@ It is currently deployed at: https://email-triage-env.ojasdeshpande.in/ or https
 
 ## Author
 Ojas Deshpande
-[contact.ojasdeshpande@gmail.com]
+[contact@ojasdeshpande.in]
+
